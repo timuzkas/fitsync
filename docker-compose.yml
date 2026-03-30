@@ -22,6 +22,8 @@ services:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
+      args:
+        DATABASE_URL: postgresql://${DB_USER:-fitsync_user}:${DB_PASSWORD:-fitsync_password}@db:5432/${DB_NAME:-fitsync_db}?schema=public
     restart: always
     env_file:
       - .env.prod

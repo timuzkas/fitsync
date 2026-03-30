@@ -21,7 +21,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Generate Prisma Client
-RUN cd packages/prisma && npx prisma generate
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
+RUN cd packages/prisma && ../node_modules/.bin/prisma generate
 
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED 1
