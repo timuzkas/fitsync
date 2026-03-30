@@ -40,6 +40,11 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/apps/backend/public ./apps/backend/public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/backend/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/backend/.next/static ./apps/backend/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/packages/prisma ./packages/prisma
+
+# Add entrypoint script
+COPY apps/backend/docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 USER nextjs
 
@@ -48,5 +53,5 @@ EXPOSE 3000
 ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
-# Note: Standalone output requires running the server from the root of the build output
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "apps/backend/server.js"]

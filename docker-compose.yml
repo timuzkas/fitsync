@@ -5,28 +5,34 @@ services:
     image: postgres:16-alpine
     restart: always
     environment:
-      POSTGRES_USER: fitsync_user
-      POSTGRES_PASSWORD: fitsync_password
-      POSTGRES_DB: fitsync_db
+      POSTGRES_USER: ${DB_USER:-fitsync_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitsync_password}
+      POSTGRES_DB: ${DB_NAME:-fitsync_db}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fitsync_user} -d ${DB_NAME:-fitsync_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
       context: .
       dockerfile: apps/backend/Dockerfile
     restart: always
+    env_file:
+      - .env.prod
     environment:
-      DATABASE_URL: postgresql://fitsync_user:fitsync_password@db:5432/fitsync_db?schema=public
-      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID:-your_client_id}
-      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-your_client_secret}
-      STRAVA_REDIRECT_URI: ${STRAVA_REDIRECT_URI:-http://localhost:3000/api/integrations/strava/callback}
+      DATABASE_URL: postgresql://${DB_USER:-fitsync_user}:${DB_PASSWORD:-fitsync_password}@db:5432/${DB_NAME:-fitsync_db}?schema=public
+      NODE_ENV: production
     ports:
       - "3000:3000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   postgres_data:

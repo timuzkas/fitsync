@@ -36,6 +36,7 @@ apps/mobile/ios/*.xcuserstate
 
 # Environment / Secrets
 .env
+.env.prod
 .env.local
 .env.development.local
 .env.test.local
