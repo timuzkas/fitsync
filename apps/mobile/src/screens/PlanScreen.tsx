@@ -1,0 +1,476 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Alert
+} from 'react-native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useDeviceStore } from '../store/useDeviceStore';
+import { api } from '../api/client';
+import { 
+  generateSmartPlan, 
+  adaptPlanAfterNewWorkout, 
+  DailyPlan, 
+  getDayTypeColor, 
+  getDayTypeIcon,
+  getVdotZoneLabel 
+} from '../lib/dailyPlanner';
+import { TrainingTarget } from '../types';
+import { tokens } from '../tokens';
+
+type PlanRouteParams = {
+  Plan: { target?: TrainingTarget; refresh?: boolean };
+};
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+export default function PlanScreen() {
+  const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<PlanRouteParams, 'Plan'>>();
+  const { deviceId, deviceSecret, athleteProfile, planConfig, target: storedTarget, setTarget: setStoredTarget, _hasHydrated } = useDeviceStore();
+
+  const [target, setTarget] = useState<TrainingTarget | null>(route.params?.target || storedTarget || null);
+  const [workouts, setWorkouts] = useState<any[]>([]);
+  const [expanded, setExpanded] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [readiness, setReadiness] = useState(0.7);
+
+  const handleSavePlan = useCallback(() => {
+    if (target) {
+      setStoredTarget(target);
+      setSaved(true);
+      Alert.alert('Plan Saved', 'Your training plan has been saved.');
+      setTimeout(() => setSaved(false), 2000);
+    }
+  }, [target, setStoredTarget]);
+
+  useEffect(() => {
+    if (deviceId && deviceSecret) {
+      api.getWorkouts(deviceId, deviceSecret).then(setWorkouts).catch(console.error);
+      api.getLoadToday(deviceId, deviceSecret)
+        .then(data => { if (data?.readiness != null) setReadiness(data.readiness); })
+        .catch(() => {});
+    }
+  }, [deviceId, deviceSecret]);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const { dailyPlan, weeklyStats, progress, daysRemaining, completedDist, targetDist } = useMemo(() => {
+    if (!_hasHydrated || !target) return { dailyPlan: [], weeklyStats: [], progress: 0, daysRemaining: 0, completedDist: 0, targetDist: 0 };
+
+    const activities = workouts.map(w => ({
+      date: new Date(w.startedAt),
+      distance: (w.distanceM || 0) / 1000,
+      duration: w.durationSec || 0,
+      hrAvg: w.avgHr || 140,
+      elevationGain: w.elevationGain || 0,
+    }));
+
+      const athlete = {
+      maxHR: athleteProfile?.maxHR || 190,
+      restHR: athleteProfile?.restHR || 60,
+      weight: athleteProfile?.weight || 75,
+      height: athleteProfile?.height,
+      sex: athleteProfile?.sex,
+    };
+
+    const defaults = {
+      freeDays: ['wed', 'sat', 'sun'],
+      weeklyTargetKm: 40,
+      longRunTargetKm: 15,
+      sessionsPerWeek: 3,
+    };
+    const config = planConfig ? { ...defaults, ...planConfig } : defaults;
+    
+    const readinessScores: Record<string, number> = {};
+    const todayDateStr = today.toISOString().split('T')[0];
+    readinessScores[todayDateStr] = readiness;
+    const temps: Record<string, number> = {};
+    
+    const { dailyPlan: basePlan, weeklyStats } = generateSmartPlan(target, activities, athlete, config, readinessScores, temps);
+
+    // Adapt plan based on most recent completed workout
+    let dailyPlan = basePlan;
+    const todayStr = today.toISOString().split('T')[0];
+    const completedWorkouts = workouts
+      .filter((w: any) => (w.startedAt || '').split('T')[0] <= todayStr)
+      .sort((a: any, b: any) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+
+    const lastWorkout = completedWorkouts.length > 0 ? completedWorkouts[0] : null;
+    if (lastWorkout) {
+      dailyPlan = adaptPlanAfterNewWorkout(basePlan, lastWorkout, athlete, readinessScores);
+    }
+
+    const targetDate = new Date(target.targetDate);
+    const daysRemaining = Math.max(0, Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+    const totalDays = Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const progress = totalDays > 0 ? Math.round(((totalDays - daysRemaining) / totalDays) * 100) : 100;
+
+    const completedDist = dailyPlan
+      .filter(d => d.dayNum < (totalDays - daysRemaining))
+      .reduce((sum, d) => sum + d.targetDistanceKm, 0);
+
+    return { dailyPlan, weeklyStats, progress, daysRemaining, completedDist, targetDist: target.distanceKm };
+  }, [target, workouts, athleteProfile, planConfig, today, _hasHydrated, readiness]);
+
+  const todayPlan = dailyPlan.find(d => d.dayNum === 1);
+  const tomorrowPlan = dailyPlan.find(d => d.dayNum === 2);
+  const upcomingPlan = dailyPlan.slice(expanded ? undefined : 3);
+
+  const formatPace = (sec: number) => {
+    if (!sec) return '--';
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const formatDate = (dateStr: string) => {
+    const datePart = dateStr.split('-w')[0];
+    const d = new Date(datePart);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const ringColor = progress > 70 ? tokens.color.success : progress > 30 ? tokens.color.warning : tokens.color.primary;
+
+  const handleResetPlan = useCallback(() => {
+    Alert.alert('Reset Plan', 'Delete your current plan and start over?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reset', style: 'destructive', onPress: () => {
+        setStoredTarget(null);
+        setTarget(null);
+      }},
+    ]);
+  }, [setStoredTarget]);
+
+  if (!_hasHydrated) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>⏳</Text>
+          <Text style={styles.emptyTitle}>Loading...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!target) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyIcon}>🎯</Text>
+          <Text style={styles.emptyTitle}>No Target Set</Text>
+          <Text style={styles.emptySub}>Set a race goal to generate your training plan</Text>
+          <TouchableOpacity style={styles.setTargetBtn} onPress={() => navigation.navigate('Target')}>
+            <Text style={styles.setTargetBtnText}>Set Target</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Text style={styles.back}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Plan</Text>
+        <View style={styles.headerBtns}>
+          {target && (
+            <TouchableOpacity onPress={handleSavePlan}>
+              <Text style={styles.headerSaveBtn}>{saved ? '✓' : '💾'}</Text>
+            </TouchableOpacity>
+          )}
+          {target && (
+            <TouchableOpacity onPress={handleResetPlan}>
+              <Text style={styles.headerResetBtn}>🗑</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.calendarHeader}>
+          <View style={styles.ringContainer}>
+            <View style={[styles.ring, { borderColor: ringColor }]}>
+              <Text style={[styles.ringPercent, { color: ringColor }]}>{progress}%</Text>
+              <Text style={styles.ringLabel}>to goal</Text>
+            </View>
+          </View>
+          
+          <View style={styles.targetStats}>
+            <Text style={styles.targetTitle}>
+              {target.distanceKm}K {target.type === 'run' ? 'Run' : target.type === 'ride' ? 'Ride' : 'Swim'}
+            </Text>
+            <Text style={styles.targetDate}>{formatDate(target.targetDate)}</Text>
+            
+            <View style={styles.statRow}>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{daysRemaining}</Text>
+                <Text style={styles.statLabel}>days left</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{formatPace(target.targetPaceSecPerKm || 0)}</Text>
+                <Text style={styles.statLabel}>target pace</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{formatPace(target.targetTimeSec ? target.targetTimeSec / target.distanceKm : 0)}</Text>
+                <Text style={styles.statLabel}>finish</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {todayPlan && (
+          <View style={styles.todayCard}>
+            <View style={styles.todayBadge}>
+              <Text style={styles.todayBadgeText}>TODAY</Text>
+            </View>
+            <View style={styles.todayContent}>
+              <View style={styles.todayMain}>
+                <Text style={styles.todayIcon}>{getDayTypeIcon(todayPlan.type)}</Text>
+                <View style={styles.todayInfo}>
+                  <Text style={styles.todayTitle}>{todayPlan.title}</Text>
+                  <View style={styles.zoneBadgeRow}>
+                    <View style={[styles.zoneBadge, { backgroundColor: getDayTypeColor(todayPlan.type) + '30' }]}>
+                      <Text style={[styles.zoneBadgeText, { color: getDayTypeColor(todayPlan.type) }]}>
+                        {getVdotZoneLabel(todayPlan.vdotZone)}
+                      </Text>
+                    </View>
+                    {todayPlan.rpe > 0 && (
+                      <Text style={styles.rpeText}>RPE: {todayPlan.rpe}</Text>
+                    )}
+                  </View>
+                  <Text style={styles.todayDesc}>{todayPlan.description}</Text>
+                </View>
+              </View>
+              <View style={styles.todayMetrics}>
+                {todayPlan.targetDistanceKm > 0 ? (
+                  <>
+                    <View style={styles.todayMetric}>
+                      <Text style={styles.todayMetricValue}>{todayPlan.targetDistanceKm}km</Text>
+                      <Text style={styles.todayMetricLabel}>distance</Text>
+                    </View>
+                    <View style={styles.todayMetric}>
+                      <Text style={styles.todayMetricValue}>{todayPlan.targetDurationMin}min</Text>
+                      <Text style={styles.todayMetricLabel}>duration</Text>
+                    </View>
+                    <View style={styles.todayMetric}>
+                      <Text style={styles.todayMetricValue}>{formatPace(todayPlan.targetPaceSecPerKm)}</Text>
+                      <Text style={styles.todayMetricLabel}>pace</Text>
+                    </View>
+                  </>
+                ) : (
+                  <Text style={styles.restLabel}>Rest Day</Text>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {tomorrowPlan && (
+          <View style={styles.tomorrowCard}>
+            <View style={styles.tomorrowBadge}>
+              <Text style={styles.tomorrowBadgeText}>TOMORROW</Text>
+            </View>
+            <View style={styles.tomorrowContent}>
+              <View style={styles.tomorrowMain}>
+                <Text style={styles.tomorrowIcon}>{getDayTypeIcon(tomorrowPlan.type)}</Text>
+                <View style={styles.tomorrowInfo}>
+                  <Text style={styles.tomorrowTitle}>{tomorrowPlan.title}</Text>
+                  <Text style={styles.tomorrowDesc}>{tomorrowPlan.description}</Text>
+                </View>
+              </View>
+              <View style={styles.tomorrowMetrics}>
+                {tomorrowPlan.targetDistanceKm > 0 ? (
+                  <>
+                    <Text style={styles.tomorrowMetric}>{tomorrowPlan.targetDistanceKm}km</Text>
+                    <Text style={styles.tomorrowMetric}>{formatPace(tomorrowPlan.targetPaceSecPerKm)}/km</Text>
+                  </>
+                ) : (
+                  <Text style={styles.restLabel}>Rest</Text>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {upcomingPlan.length > 0 && (
+          <>
+            <TouchableOpacity 
+              style={styles.expandBtn} 
+              onPress={() => setExpanded(!expanded)}
+            >
+              <Text style={styles.expandBtnText}>
+                {expanded ? 'Show Less' : `Show ${upcomingPlan.length} more days`}
+              </Text>
+              <Text style={styles.expandBtnIcon}>{expanded ? '▲' : '▼'}</Text>
+            </TouchableOpacity>
+
+            {upcomingPlan.map((day, idx) => (
+              <View key={day.date} style={styles.dayCard}>
+                <View style={styles.dayHeader}>
+                  <View>
+                    <Text style={styles.dayName}>{day.dayOfWeek}, {formatDate(day.date)}</Text>
+                    <Text style={styles.dayNum}>Day {day.dayNum}</Text>
+                  </View>
+                  <View style={[styles.dayTypeBadge, { backgroundColor: getDayTypeColor(day.type) + '20' }]}>
+                    <Text style={[styles.dayTypeText, { color: getDayTypeColor(day.type) }]}>
+                      {day.type.toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={styles.dayContent}>
+                  <Text style={styles.dayIcon}>{getDayTypeIcon(day.type)}</Text>
+                  <View style={styles.dayInfo}>
+                    <Text style={styles.dayTitle}>{day.title}</Text>
+                    <Text style={[styles.dayZoneLabel, { color: getDayTypeColor(day.type) }]}>
+                      {getVdotZoneLabel(day.vdotZone)}
+                    </Text>
+                    <Text style={styles.dayDesc}>{day.description}</Text>
+                  </View>
+                </View>
+
+                {day.targetDistanceKm > 0 && (
+                  <View style={styles.dayMetrics}>
+                    <View style={styles.dayMetric}>
+                      <Text style={styles.dayMetricValue}>{day.targetDistanceKm}km</Text>
+                    </View>
+                    <View style={styles.dayMetric}>
+                      <Text style={styles.dayMetricValue}>{day.targetDurationMin}min</Text>
+                    </View>
+                    <View style={styles.dayMetric}>
+                      <Text style={styles.dayMetricValue}>{formatPace(day.targetPaceSecPerKm)}</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            ))}
+          </>
+        )}
+
+        <View style={{ height: 120 }} />
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: tokens.color.bg },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: tokens.space.md, paddingTop: 60, paddingBottom: tokens.space.sm,
+  },
+  back: { fontSize: 24, color: tokens.color.textMuted },
+  headerTitle: { fontSize: tokens.font.lg, fontWeight: '600', color: tokens.color.textPrimary },
+  editBtn: { fontSize: 20 },
+  content: { flex: 1, paddingHorizontal: tokens.space.md },
+  
+  calendarHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: tokens.space.lg,
+    backgroundColor: tokens.color.surface, borderRadius: tokens.radius.lg,
+    padding: tokens.space.lg, marginBottom: tokens.space.lg, borderWidth: 1, borderColor: tokens.color.border,
+  },
+  ringContainer: { alignItems: 'center', justifyContent: 'center' },
+  ring: {
+    width: 80, height: 80, borderRadius: 40, borderWidth: 4, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: tokens.color.elevated,
+  },
+  ringPercent: { fontSize: tokens.font.xl, fontWeight: 'bold' },
+  ringLabel: { fontSize: 10, color: tokens.color.textMuted },
+  
+  targetStats: { flex: 1 },
+  targetTitle: { fontSize: tokens.font.lg, fontWeight: 'bold', color: tokens.color.textPrimary },
+  targetDate: { fontSize: tokens.font.sm, color: tokens.color.textMuted, marginBottom: tokens.space.sm },
+  
+  statRow: { flexDirection: 'row', alignItems: 'center' },
+  statItem: { alignItems: 'center', flex: 1 },
+  statValue: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
+  statLabel: { fontSize: 10, color: tokens.color.textMuted },
+  statDivider: { width: 1, height: 24, backgroundColor: tokens.color.border },
+
+  todayCard: {
+    backgroundColor: tokens.color.primaryMuted, borderRadius: tokens.radius.lg,
+    padding: tokens.space.lg, marginBottom: tokens.space.md, borderWidth: 2, borderColor: tokens.color.primary,
+  },
+  todayBadge: {
+    backgroundColor: tokens.color.primary, borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.space.sm, paddingVertical: 2, alignSelf: 'flex-start', marginBottom: tokens.space.sm,
+  },
+  todayBadgeText: { fontSize: 10, fontWeight: 'bold', color: '#fff' },
+  todayContent: {},
+  todayMain: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.md, marginBottom: tokens.space.md },
+  todayIcon: { fontSize: 36 },
+  todayInfo: { flex: 1 },
+  todayTitle: { fontSize: tokens.font.xl, fontWeight: 'bold', color: tokens.color.textPrimary },
+  zoneBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm, marginVertical: 4 },
+  zoneBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  zoneBadgeText: { fontSize: 10, fontWeight: 'bold' },
+  rpeText: { fontSize: 10, color: tokens.color.textMuted, fontWeight: '600' },
+  todayDesc: { fontSize: tokens.font.sm, color: tokens.color.textSecondary, marginTop: 2 },
+  todayMetrics: { flexDirection: 'row', gap: tokens.space.lg },
+  todayMetric: { alignItems: 'center' },
+  todayMetricValue: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
+  todayMetricLabel: { fontSize: 10, color: tokens.color.textMuted },
+  restLabel: { fontSize: tokens.font.md, color: tokens.color.textMuted },
+
+  tomorrowCard: {
+    backgroundColor: tokens.color.surface, borderRadius: tokens.radius.lg,
+    padding: tokens.space.md, marginBottom: tokens.space.lg, borderWidth: 1, borderColor: tokens.color.border,
+  },
+  tomorrowBadge: {
+    backgroundColor: tokens.color.elevated, borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.space.sm, paddingVertical: 2, alignSelf: 'flex-start', marginBottom: tokens.space.sm,
+  },
+  tomorrowBadgeText: { fontSize: 10, fontWeight: '600', color: tokens.color.textMuted },
+  tomorrowContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tomorrowMain: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm, flex: 1 },
+  tomorrowIcon: { fontSize: 24 },
+  tomorrowInfo: { flex: 1 },
+  tomorrowTitle: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
+  tomorrowDesc: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
+  tomorrowMetrics: { flexDirection: 'row', gap: tokens.space.sm },
+  tomorrowMetric: { fontSize: tokens.font.sm, color: tokens.color.textSecondary },
+
+  expandBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: tokens.space.xs,
+    paddingVertical: tokens.space.sm, marginBottom: tokens.space.md,
+  },
+  expandBtnText: { fontSize: tokens.font.sm, color: tokens.color.primary, fontWeight: '600' },
+  expandBtnIcon: { fontSize: 12, color: tokens.color.primary },
+
+  dayCard: {
+    backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md,
+    padding: tokens.space.md, marginBottom: tokens.space.sm, borderWidth: 1, borderColor: tokens.color.border,
+  },
+  dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: tokens.space.sm },
+  dayName: { fontSize: tokens.font.sm, color: tokens.color.textMuted },
+  dayNum: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
+  dayTypeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  dayTypeText: { fontSize: 9, fontWeight: 'bold' },
+  dayContent: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm },
+  dayIcon: { fontSize: 20 },
+  dayInfo: { flex: 1 },
+  dayTitle: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
+  dayZoneLabel: { fontSize: 10, fontWeight: 'bold', marginBottom: 2 },
+  dayDesc: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
+  dayMetrics: { flexDirection: 'row', gap: tokens.space.md, marginTop: tokens.space.sm, paddingTop: tokens.space.sm, borderTopWidth: 1, borderTopColor: tokens.color.border },
+  dayMetric: {},
+  dayMetricValue: { fontSize: tokens.font.sm, color: tokens.color.textSecondary },
+
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: tokens.space.xl },
+  emptyIcon: { fontSize: 64, marginBottom: tokens.space.md },
+  emptyTitle: { fontSize: tokens.font.xl, fontWeight: 'bold', color: tokens.color.textPrimary, marginBottom: tokens.space.xs },
+  emptySub: { fontSize: tokens.font.md, color: tokens.color.textMuted, textAlign: 'center', marginBottom: tokens.space.lg },
+  setTargetBtn: {
+    backgroundColor: tokens.color.primary, borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.space.xl, paddingVertical: tokens.space.md,
+  },
+  setTargetBtnText: { color: '#fff', fontSize: tokens.font.md, fontWeight: 'bold' },
+  headerBtns: { flexDirection: 'row', gap: tokens.space.sm },
+  headerSaveBtn: { fontSize: 20 },
+  headerResetBtn: { fontSize: 18, marginLeft: tokens.space.xs },
+});

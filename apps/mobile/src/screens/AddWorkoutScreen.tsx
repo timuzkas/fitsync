@@ -1,0 +1,544 @@
+import React, { useState, useEffect } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
+  ScrollView, Alert, KeyboardAvoidingView, Platform
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { tokens } from '../tokens';
+import { useDeviceStore } from '../store/useDeviceStore';
+import { api } from '../api/client';
+import { StepIndicator } from '../components/ui/StepIndicator';
+import { Pill } from '../components/ui/Pill';
+
+const WORKOUT_TYPES = [
+  { id: 'run', icon: '🏃', label: 'Run' },
+  { id: 'ride', icon: '🚴', label: 'Ride' },
+  { id: 'strength', icon: '🏋️', label: 'Lift' },
+  { id: 'walk', icon: '🚶', label: 'Walk' },
+  { id: 'swim', icon: '🏊', label: 'Swim' },
+  { id: 'other', icon: '⚡', label: 'Other' },
+];
+
+const MUSCLE_GROUPS = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Glutes', 'Core', 'Calves', 'Forearms'];
+
+export default function AddWorkoutScreen() {
+  const navigation = useNavigation<any>();
+  const { deviceId, deviceSecret } = useDeviceStore();
+  const [step, setStep] = useState(0);
+  const [workoutType, setWorkoutType] = useState('');
+  const [title, setTitle] = useState('');
+  const [durMin, setDurMin] = useState('');
+  const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
+  const [timeStr, setTimeStr] = useState(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+  const [distanceKm, setDistanceKm] = useState('');
+  const [avgHr, setAvgHr] = useState('');
+  const [calories, setCalories] = useState('');
+  const [notes, setNotes] = useState('');
+  const [isPlanned, setIsPlanned] = useState(false);
+  const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
+  const [exercises, setExercises] = useState<any[]>([]);
+  const [library, setLibrary] = useState<any[]>([]);
+  const [showLib, setShowLib] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (deviceId && deviceSecret && workoutType === 'strength') {
+      api.getExerciseLibrary(deviceId, deviceSecret).then(setLibrary).catch(() => {});
+    }
+  }, [deviceId, deviceSecret, workoutType]);
+
+  const filteredLib = library.filter((ex: any) =>
+    selectedMuscles.length === 0 ||
+    ex.muscleGroups.some((mg: string) => selectedMuscles.includes(mg))
+  );
+
+  function toggleMuscle(mg: string) {
+    setSelectedMuscles(prev =>
+      prev.includes(mg) ? prev.filter(m => m !== mg) : [...prev, mg]
+    );
+  }
+
+  function addEx(name?: string) {
+    setExercises(prev => [...prev, { name: name || '', sets: [{ reps: 0, weight: 0 }] }]);
+  }
+
+  function removeEx(i: number) {
+    setExercises(prev => prev.filter((_, idx) => idx !== i));
+  }
+
+  function addSet(exI: number) {
+    const u = [...exercises];
+    u[exI].sets = [...u[exI].sets, { reps: 0, weight: 0 }];
+    setExercises(u);
+  }
+
+  function remSet(exI: number, setI: number) {
+    const u = [...exercises];
+    u[exI].sets = u[exI].sets.filter((_: any, i: number) => i !== setI);
+    setExercises(u);
+  }
+
+  function updSet(exI: number, setI: number, field: 'reps' | 'weight', v: string) {
+    const u = [...exercises];
+    u[exI].sets[setI] = { ...u[exI].sets[setI], [field]: parseInt(v) || 0 };
+    setExercises(u);
+  }
+
+  function calcPreview() {
+    let total = 0;
+    exercises.filter(e => e.name.trim()).forEach(ex => {
+      const vol = (ex.sets || []).reduce((a: number, s: any) => a + (s.reps || 0) * (s.weight || 0), 0);
+      total += vol * 0.05;
+    });
+    return Math.round(total * 10) / 10;
+  }
+
+  async function handleSave() {
+    if (!title.trim() || !durMin) {
+      Alert.alert('Error', 'Fill in title and duration');
+      return;
+    }
+    if (!deviceId || !deviceSecret) return;
+    setSaving(true);
+
+    const validExs = exercises
+      .filter(e => e.name.trim() && (e.sets || []).length > 0)
+      .map(e => ({
+        name: e.name.trim(),
+        muscleGroups: selectedMuscles,
+        sets: (e.sets || []).map((s: any) => ({ reps: s.reps || 0, weight: s.weight || 0 })),
+      }));
+
+    try {
+      const timeParts = timeStr.split(':');
+      const combinedDate = new Date(dateStr);
+      if (timeParts.length === 2) {
+        combinedDate.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), 0, 0);
+      }
+
+      await api.createManualWorkout(deviceId, deviceSecret, {
+        title: title.trim(),
+        type: workoutType,
+        startedAt: combinedDate.toISOString(),
+        durationSec: parseInt(durMin) * 60,
+        distanceM: distanceKm ? parseFloat(distanceKm) * 1000 : undefined,
+        avgHr: avgHr ? parseInt(avgHr) : undefined,
+        calories: calories ? parseInt(calories) : undefined,
+        notes: notes || undefined,
+        exercises: validExs,
+        isPlanned,
+      });
+      Alert.alert('Saved!', 'Workout added', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function canContinue() {
+    if (step === 0) return !!workoutType;
+    if (step === 1) return !!title.trim() && !!durMin;
+    return true;
+  }
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1 }}
+    >
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => step === 0 ? navigation.goBack() : setStep(s => s - 1)}>
+            <Text style={styles.back}>{step === 0 ? '✕' : '←'}</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Add Workout</Text>
+          <View style={{ width: 30 }} />
+        </View>
+
+        <StepIndicator current={step} total={4} />
+
+        <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
+
+          {step === 0 && (
+            <View style={styles.stepContent}>
+              <Text style={styles.stepTitle}>What did you do?</Text>
+              <View style={styles.typeGrid}>
+                {WORKOUT_TYPES.map(t => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[styles.typeCard, workoutType === t.id && styles.typeCardActive]}
+                    onPress={() => setWorkoutType(t.id)}
+                  >
+                    <Text style={styles.typeIcon}>{t.icon}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {step === 1 && (
+            <View style={styles.stepContent}>
+              <Text style={styles.stepTitle}>{WORKOUT_TYPES.find(t => t.id === workoutType)?.icon} {WORKOUT_TYPES.find(t => t.id === workoutType)?.label}</Text>
+              
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Date</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={dateStr}
+                    onChangeText={setDateStr}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={tokens.color.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: tokens.space.md }}>
+                  <Text style={styles.fieldLabel}>Time</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={timeStr}
+                    onChangeText={setTimeStr}
+                    placeholder="HH:MM"
+                    placeholderTextColor={tokens.color.textMuted}
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.fieldLabel}>Title</Text>
+              <TextInput
+                style={styles.input}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="e.g. Morning Run, Push Day"
+                placeholderTextColor={tokens.color.textMuted}
+              />
+              <Text style={styles.fieldLabel}>Duration (minutes)</Text>
+              <TextInput
+                style={styles.input}
+                value={durMin}
+                onChangeText={setDurMin}
+                placeholder="60"
+                placeholderTextColor={tokens.color.textMuted}
+                keyboardType="numeric"
+              />
+              <Text style={styles.fieldLabel}>Calories (optional)</Text>
+              <TextInput
+                style={styles.input}
+                value={calories}
+                onChangeText={setCalories}
+                placeholder="350"
+                placeholderTextColor={tokens.color.textMuted}
+                keyboardType="numeric"
+              />
+              <Text style={styles.fieldLabel}>Notes (optional)</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="How did it feel?"
+                placeholderTextColor={tokens.color.textMuted}
+                multiline
+              />
+            </View>
+          )}
+
+          {step === 2 && workoutType === 'strength' && (
+            <View style={styles.stepContent}>
+              <Text style={styles.stepTitle}>Muscle Groups</Text>
+              <View style={styles.muscleGrid}>
+                {MUSCLE_GROUPS.map(mg => (
+                  <TouchableOpacity
+                    key={mg}
+                    onPress={() => toggleMuscle(mg)}
+                  >
+                    <Pill
+                      label={mg}
+                      variant={selectedMuscles.includes(mg) ? 'primary' : 'muted'}
+                      outlined={!selectedMuscles.includes(mg)}
+                      showCheck={selectedMuscles.includes(mg)}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Exercises</Text>
+              {exercises.map((ex, ei) => (
+                <View key={ei} style={styles.exCard}>
+                  <View style={styles.exHeader}>
+                    <TextInput
+                      style={styles.exName}
+                      value={ex.name}
+                      onChangeText={v => { const u = [...exercises]; u[ei].name = v; setExercises(u); }}
+                      placeholder="Exercise name"
+                      placeholderTextColor={tokens.color.textMuted}
+                    />
+                    <TouchableOpacity onPress={() => removeEx(ei)}>
+                      <Text style={{ color: tokens.color.danger, fontSize: 18 }}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {ex.sets.map((s: any, si: number) => (
+                    <View key={si} style={styles.setRow}>
+                      <Text style={styles.setNum}>Set {si + 1}</Text>
+                      <TextInput
+                        style={styles.setInput}
+                        value={s.reps || s.reps === 0 ? String(s.reps) : ''}
+                        onChangeText={v => updSet(ei, si, 'reps', v)}
+                        placeholder="Reps"
+                        placeholderTextColor={tokens.color.textMuted}
+                        keyboardType="numeric"
+                      />
+                      <Text style={{ color: tokens.color.textMuted }}>×</Text>
+                      <TextInput
+                        style={styles.setInput}
+                        value={s.weight || s.weight === 0 ? String(s.weight) : ''}
+                        onChangeText={v => updSet(ei, si, 'weight', v)}
+                        placeholder="kg"
+                        placeholderTextColor={tokens.color.textMuted}
+                        keyboardType="numeric"
+                      />
+                      <Text style={{ color: tokens.color.textMuted }}>kg</Text>
+                      <TouchableOpacity onPress={() => remSet(ei, si)}>
+                        <Text style={{ color: tokens.color.danger, marginLeft: 4 }}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity onPress={() => addSet(ei)}>
+                    <Text style={styles.addSet}>+ Set</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addExBtn} onPress={() => addEx()}>
+                <Text style={styles.addExText}>+ Add Exercise</Text>
+              </TouchableOpacity>
+              {library.length > 0 && (
+                <>
+                  <TouchableOpacity onPress={() => setShowLib(!showLib)}>
+                    <Text style={styles.libToggle}>{showLib ? 'Hide Library' : 'From Library'}</Text>
+                  </TouchableOpacity>
+                  {showLib && (
+                    <View style={styles.libList}>
+                      {filteredLib.map((ex: any, i: number) => (
+                        <TouchableOpacity key={i} style={styles.libItem} onPress={() => { addEx(ex.name); setShowLib(false); }}>
+                          <Text style={styles.libName}>{ex.name}</Text>
+                          <Text style={styles.libMuscles}>{ex.muscleGroups.join(', ')}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
+          )}
+
+          {step === 2 && workoutType !== 'strength' && (
+            <View style={styles.stepContent}>
+              <Text style={styles.stepTitle}>Performance</Text>
+              <Text style={styles.fieldLabel}>Distance (km)</Text>
+              <TextInput
+                style={styles.input}
+                value={distanceKm}
+                onChangeText={setDistanceKm}
+                placeholder="5.0"
+                placeholderTextColor={tokens.color.textMuted}
+                keyboardType="numeric"
+              />
+              <Text style={styles.fieldLabel}>Avg Heart Rate (bpm)</Text>
+              <TextInput
+                style={styles.input}
+                value={avgHr}
+                onChangeText={setAvgHr}
+                placeholder="145"
+                placeholderTextColor={tokens.color.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+          )}
+
+          {step === 3 && (
+            <View style={styles.stepContent}>
+              <Text style={styles.stepTitle}>
+                {WORKOUT_TYPES.find(t => t.id === workoutType)?.icon}{' '}
+                {title || workoutType}
+              </Text>
+              <Text style={styles.subtitle}>
+                {dateStr} @ {timeStr} · {durMin} min 
+                {distanceKm ? ` · ${distanceKm} km` : ''} 
+                {calories ? ` · ${calories} kcal` : ''}
+              </Text>
+
+              <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Planning</Text>
+              <TouchableOpacity 
+                style={styles.toggleRow} 
+                onPress={() => setIsPlanned(!isPlanned)}
+              >
+                <Pill 
+                  label="Plan to run a race" 
+                  variant={isPlanned ? 'primary' : 'muted'} 
+                  showCheck={isPlanned}
+                />
+                <Text style={styles.toggleLabel}>
+                  {isPlanned ? 'Marked as planned/race session' : 'Optional: Mark as part of your goal'}
+                </Text>
+              </TouchableOpacity>
+
+              {workoutType === 'strength' && exercises.length > 0 && (
+                <>
+                  <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Load Preview</Text>
+                  <View style={styles.loadPreview}>
+                    {selectedMuscles.map(mg => (
+                      <View key={mg} style={styles.loadPreviewRow}>
+                        <Text style={styles.loadPreviewBullet}>▸</Text>
+                        <Text style={styles.loadPreviewLabel}>{mg}</Text>
+                        <Text style={styles.loadPreviewVal}>+{calcPreview().toFixed(1)}</Text>
+                        <View style={styles.loadPreviewBar}>
+                          <View style={[styles.loadPreviewFill, { width: `${Math.min(calcPreview() * 2, 100)}%` }]} />
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                  <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Exercises</Text>
+                  {exercises.filter(e => e.name.trim()).map((ex: any, i: number) => (
+                    <View key={i} style={styles.reviewEx}>
+                      <Text style={styles.reviewExName}>{ex.name}</Text>
+                      <Text style={styles.reviewExSets}>
+                        {ex.sets.map((s: any) => `${s.reps || 0}×${s.weight || 0}kg`).join(' · ')}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+
+              {workoutType !== 'strength' && (
+                <View style={{ marginTop: tokens.space.lg }}>
+                  <Text style={styles.stepTitle}>Load Preview</Text>
+                  <Text style={styles.noExNote}>Cardio load will be estimated from duration{distanceKm ? ' & distance' : ''}{avgHr ? ' & HR' : ''}.</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          <View style={{ height: 100 }} />
+        </ScrollView>
+
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={[styles.continueBtn, !canContinue() && styles.continueBtnDisabled]}
+            onPress={() => {
+              if (step < 3) setStep(s => s + 1);
+              else handleSave();
+            }}
+            disabled={!canContinue() || saving}
+          >
+            <Text style={styles.continueBtnText}>
+              {saving ? 'Saving...' : step < 3 ? 'Continue →' : '💾 Save'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: tokens.color.bg },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: tokens.space.md,
+    paddingTop: 60,
+    paddingBottom: tokens.space.sm,
+  },
+  back: { fontSize: 20, color: tokens.color.textMuted },
+  headerTitle: { fontSize: tokens.font.lg, fontWeight: '600', color: tokens.color.textPrimary },
+  content: { flex: 1, paddingHorizontal: tokens.space.md },
+  stepContent: { paddingTop: tokens.space.lg, paddingBottom: tokens.space.md },
+  stepTitle: { fontSize: tokens.font.xl, fontWeight: 'bold', color: tokens.color.textPrimary, marginBottom: tokens.space.lg },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  typeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  typeCard: {
+    width: '31%',
+    aspectRatio: 1,
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    marginBottom: tokens.space.sm,
+  },
+  typeCardActive: {
+    borderColor: tokens.color.primary,
+    backgroundColor: tokens.color.primaryMuted,
+  },
+  typeIcon: { fontSize: 32 },
+  fieldLabel: { fontSize: tokens.font.sm, color: tokens.color.textMuted, marginBottom: 4, marginTop: tokens.space.lg },
+  input: {
+    backgroundColor: tokens.color.surface,
+    color: tokens.color.textPrimary,
+    borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    fontSize: tokens.font.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  textArea: { height: 80, textAlignVertical: 'top', paddingTop: tokens.space.sm },
+  muscleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space.sm },
+  exCard: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.sm,
+    padding: tokens.space.sm,
+    marginBottom: tokens.space.sm,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  exHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: tokens.space.xs },
+  exName: { flex: 1, color: tokens.color.textPrimary, fontSize: tokens.font.md, borderBottomWidth: 1, borderBottomColor: tokens.color.border, paddingBottom: 4 },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  setNum: { fontSize: tokens.font.xs, color: tokens.color.textMuted, width: 32 },
+  setInput: { backgroundColor: tokens.color.elevated, color: tokens.color.textPrimary, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 4, width: 56, textAlign: 'center', fontSize: tokens.font.sm },
+  addSet: { fontSize: tokens.font.sm, color: tokens.color.primary, marginTop: 6 },
+  addExBtn: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.sm, padding: tokens.space.md, alignItems: 'center', borderWidth: 1, borderColor: tokens.color.border, borderStyle: 'dashed' },
+  addExText: { color: tokens.color.primary, fontSize: tokens.font.md, fontWeight: '600' },
+  libToggle: { fontSize: tokens.font.sm, color: tokens.color.primary, marginVertical: tokens.space.sm },
+  libList: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.sm, maxHeight: 200 },
+  libItem: { padding: tokens.space.sm, borderBottomWidth: 1, borderBottomColor: tokens.color.border },
+  libName: { fontSize: tokens.font.sm, color: tokens.color.textPrimary, fontWeight: '500' },
+  libMuscles: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
+  loadPreview: { gap: tokens.space.xs },
+  loadPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm },
+  loadPreviewBullet: { color: tokens.color.primary, fontSize: 16, marginRight: -4 },
+  loadPreviewLabel: { fontSize: tokens.font.sm, color: tokens.color.textSecondary, width: 80 },
+  loadPreviewVal: { fontSize: tokens.font.sm, fontWeight: '600', color: tokens.color.textPrimary, width: 40 },
+  loadPreviewBar: { flex: 1, height: 4, backgroundColor: tokens.color.border, borderRadius: 2 },
+  loadPreviewFill: { height: '100%', backgroundColor: tokens.color.primary, borderRadius: 2 },
+  reviewEx: { paddingLeft: tokens.space.sm, borderLeftWidth: 2, borderLeftColor: tokens.color.primary, marginBottom: tokens.space.sm },
+  reviewExName: { fontSize: tokens.font.md, color: tokens.color.textPrimary, fontWeight: '500' },
+  reviewExSets: { fontSize: tokens.font.sm, color: tokens.color.textMuted, marginTop: 2 },
+  noExNote: { fontSize: tokens.font.sm, color: tokens.color.textMuted, textAlign: 'center', marginTop: tokens.space.lg },
+  subtitle: { fontSize: tokens.font.md, color: tokens.color.textMuted, marginBottom: tokens.space.md },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.space.md,
+    backgroundColor: tokens.color.elevated,
+    padding: tokens.space.md,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  toggleLabel: {
+    flex: 1,
+    fontSize: tokens.font.sm,
+    color: tokens.color.textSecondary,
+  },
+  footer: { padding: tokens.space.md, paddingBottom: tokens.space.xl },
+  continueBtn: { backgroundColor: tokens.color.primary, borderRadius: tokens.radius.sm, padding: tokens.space.md, alignItems: 'center' },
+  continueBtnDisabled: { opacity: 0.3 },
+  continueBtnText: { color: '#fff', fontSize: tokens.font.lg, fontWeight: 'bold' },
+});
