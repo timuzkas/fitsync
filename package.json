@@ -1,0 +1,13 @@
+{
+  "name": "fitsync-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=backend",
+    "build:backend": "npm run build --workspace=backend",
+    "prisma:generate": "npm run generate --workspace=@fitsync/prisma"
+  }
+}

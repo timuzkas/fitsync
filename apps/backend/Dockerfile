@@ -11,6 +11,7 @@ COPY apps/backend/package.json ./apps/backend/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/prisma/package.json ./packages/prisma/
 
+# Install dependencies including workspaces
 RUN npm install
 
 # 2. Rebuild the source code only when needed
@@ -54,4 +55,5 @@ ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
 ENTRYPOINT ["docker-entrypoint.sh"]
+# Note: Standalone output requires running the server from the root of the build output
 CMD ["node", "apps/backend/server.js"]
