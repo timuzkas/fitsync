@@ -27,7 +27,7 @@ RUN cd packages/prisma && npx prisma@5.22.0 generate
 
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED 1
-RUN cd apps/backend && npx next build
+RUN npm run build --workspace=backend
 
 # 3. Production image, copy all the files and run next
 FROM base AS runner
