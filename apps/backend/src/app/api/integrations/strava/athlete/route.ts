@@ -19,9 +19,16 @@ export async function GET(request: NextRequest) {
     const dataSource = installation.dataSources[0];
     const now = new Date();
 
+    if (!dataSource.accessToken) {
+      return NextResponse.json({ error: 'Strava access token missing' }, { status: 401 });
+    }
+
     let accessToken = dataSource.accessToken;
     if (dataSource.expiresAt && dataSource.expiresAt < new Date(now.getTime() + 5 * 60 * 1000)) {
-      const refreshData = await refreshStravaToken(dataSource.refreshToken!);
+      if (!dataSource.refreshToken) {
+        return NextResponse.json({ error: 'Strava refresh token missing' }, { status: 401 });
+      }
+      const refreshData = await refreshStravaToken(dataSource.refreshToken);
       await prisma.dataSource.update({
         where: { id: dataSource.id },
         data: {
