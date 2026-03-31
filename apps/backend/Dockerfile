@@ -11,6 +11,9 @@ COPY apps/backend/package.json ./apps/backend/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/prisma/package.json ./packages/prisma/
 
+# Also copy package-lock.json from backend to ensure full install there
+COPY apps/backend/package-lock.json* ./apps/backend/
+
 # Install dependencies including workspaces
 RUN npm install
 
@@ -27,7 +30,7 @@ RUN cd packages/prisma && npx prisma@5.22.0 generate
 
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED 1
-RUN npm run build --workspace=backend
+RUN npm run build:backend
 
 # 3. Production image, copy all the files and run next
 FROM base AS runner
