@@ -8,11 +8,9 @@ WORKDIR /app
 # Copy root workspace and package files
 COPY package.json package-lock.json* ./
 COPY apps/backend/package.json ./apps/backend/
+COPY apps/mobile/package.json ./apps/mobile/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/prisma/package.json ./packages/prisma/
-
-# Also copy package-lock.json from backend to ensure full install there
-COPY apps/backend/package-lock.json* ./apps/backend/
 
 # Install dependencies including workspaces
 RUN npm install
@@ -26,11 +24,11 @@ COPY . .
 # Generate Prisma Client
 ARG DATABASE_URL
 ENV DATABASE_URL=$DATABASE_URL
-RUN cd packages/prisma && npx prisma@5.22.0 generate
+RUN npm run prisma:generate
 
 # Build Next.js
 ENV NEXT_TELEMETRY_DISABLED 1
-RUN cd apps/backend && node ../../node_modules/next/dist/bin/next build
+RUN npm run build:backend
 
 # 3. Production image, copy all the files and run next
 FROM base AS runner

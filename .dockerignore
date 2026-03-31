@@ -1,0 +1,10 @@
+**/node_modules
+**/.next
+**/out
+**/build
+**/.expo
+**/.git
+.env
+.env.prod
+.env.local
+npm-debug.log*
