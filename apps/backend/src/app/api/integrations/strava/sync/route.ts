@@ -132,8 +132,8 @@ export async function POST(request: NextRequest) {
       console.log('[SYNC] Processing:', externalId, 'existing:', !!existing);
 
       // If already imported, we can skip detailed fetch to save time and rate limits
-      // We only re-sync if the activity is very recent (e.g., last 24h) to catch description updates
-      const isRecent = new Date(summaryActivity.start_date).getTime() > Date.now() - 24 * 60 * 60 * 1000;
+      // We only re-sync if the activity is recent (last 7 days) to catch description updates
+      const isRecent = new Date(summaryActivity.start_date).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000;
       console.log('[SYNC] isRecent:', isRecent, 'date:', summaryActivity.start_date);
       
       if (existing && !isRecent) {
