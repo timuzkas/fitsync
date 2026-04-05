@@ -30,17 +30,12 @@ services:
       - "3005:3000"
     volumes:
       - .:/app
-      - /app/node_modules
-      - /app/apps/backend/node_modules
-      - /app/apps/mobile/node_modules
-      - /app/packages/shared/node_modules
-      - /app/packages/prisma/node_modules
     depends_on:
       db:
         condition: service_healthy
     command: >
       sh -c "npm run generate --workspace=@fitsync/prisma &&
-             npm run dev --workspace=backend"
+             npm run dev --workspace=backend -- --webpack"
 
 volumes:
   postgres_data:
