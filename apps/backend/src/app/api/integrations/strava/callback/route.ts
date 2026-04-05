@@ -1,21 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient({
+  log: ['query', 'error'],
+});
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const code = searchParams.get('code');
-  const state = searchParams.get('state'); // Our deviceId
-  const error = searchParams.get('error');
-
-  if (error) {
-    return NextResponse.json({ error: `Strava error: ${error}` }, { status: 400 });
-  }
-
-  if (!code || !state) {
-    return NextResponse.json({ error: 'Missing code or state' }, { status: 400 });
-  }
-
+  console.log('=== Strava callback START ===');
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const code = searchParams.get('code');
+    const state = searchParams.get('state'); // Our deviceId
+    const error = searchParams.get('error');
+
+    console.log('code:', code ? 'present' : 'missing');
+    console.log('state:', state);
+    console.log('error:', error);
+
+    if (error) {
+      return NextResponse.json({ error: `Strava error: ${error}` }, { status: 400 });
+    }
+
+    if (!code || !state) {
+      return NextResponse.json({ error: 'Missing code or state' }, { status: 400 });
+    }
+
     const clientId = process.env.STRAVA_CLIENT_ID;
     const clientSecret = process.env.STRAVA_CLIENT_SECRET;
 
@@ -48,7 +57,6 @@ export async function GET(request: NextRequest) {
       throw new Error('Missing tokens in Strava response');
     }
 
-    const expiresAt = expires_at ? new Date(expires_at * 1000) : null;
     console.log('Device state:', state);
 
     // Find the installation by deviceId (which was passed as state)
