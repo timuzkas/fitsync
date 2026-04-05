@@ -40,7 +40,7 @@ const Storage = {
   },
 };
 
-const API_BASE = 'http://192.168.1.214:3000';
+const API_BASE = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.214:3000';
 
 async function apiFetch(path: string, options?: RequestInit, timeout = 8000): Promise<Response> {
   const controller = new AbortController();
