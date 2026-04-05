@@ -4,16 +4,24 @@
     "slug": "fitsync",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./fitsync.png",
     "userInterfaceStyle": "dark",
     "experiments": {
       "newArchEnabled": false
     },
     "scheme": "fitsync",
+    "extra": {
+      "API_URL": "https://fit.timuzkas.xyz"
+    },
     "android": {
-      "package": "xyz.timuzkas.fitsync"
+      "package": "xyz.timuzkas.fitsync",
+      "adaptiveIcon": {
+        "foregroundImage": "./fitsync.png"
+      }
     },
     "ios": {
-      "bundleIdentifier": "xyz.timuzkas.fitsync"
+      "bundleIdentifier": "xyz.timuzkas.fitsync",
+      "icon": "./fitsync.png"
     },
     "extra": {
       "eas": {

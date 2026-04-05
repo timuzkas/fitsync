@@ -75,7 +75,6 @@ function parseHevyLog(description: string) {
 
 export async function POST(request: NextRequest) {
   const deviceId = request.headers.get('x-device-id');
-  const force = request.nextUrl.searchParams.get('force') === 'true';
   if (!deviceId) return NextResponse.json({ error: 'Missing X-Device-Id' }, { status: 400 });
 
   try {
@@ -108,6 +107,10 @@ export async function POST(request: NextRequest) {
 
     // 3. Fetch Recent Activities
     const stravaActivities = await fetchStravaActivities(dataSource.accessToken!);
+    console.log('[SYNC] Fetched activities count:', stravaActivities.length);
+    if (stravaActivities.length > 0) {
+      console.log('[SYNC] First activity:', JSON.stringify(stravaActivities[0], null, 2));
+    }
     const stats = { imported: 0, skipped: 0 };
 
     // 4. Pre-check existing activities to avoid fetching details for them
@@ -128,10 +131,9 @@ export async function POST(request: NextRequest) {
 
       // If already imported, we can skip detailed fetch to save time and rate limits
       // We only re-sync if the activity is very recent (e.g., last 24h) to catch description updates
-      // If force=true, always re-sync
       const isRecent = new Date(summaryActivity.start_date).getTime() > Date.now() - 24 * 60 * 60 * 1000;
       
-      if (existing && !isRecent && !force) {
+      if (existing && !isRecent) {
         return { status: 'skipped' };
       }
       

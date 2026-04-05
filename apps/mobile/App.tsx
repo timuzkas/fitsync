@@ -8,6 +8,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { enableScreens } from 'react-native-screens';
+import { useFonts } from 'expo-font';
 import { useDeviceStore } from './src/store/useDeviceStore';
 import { api } from './src/api/client';
 import { LoadDashboard } from './src/components/ui/LoadDashboard';
@@ -108,7 +109,7 @@ function HomeScreen({ navigation }: any) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Fitsync</Text>
+        <Text style={[styles.title, { fontFamily: 'NicoMoji' }]}>Fitsync</Text>
         <View style={styles.headerBtns}>
           <TouchableOpacity
             style={styles.headerBtn}
@@ -346,6 +347,9 @@ const styles = StyleSheet.create({
 
 export default function App() {
   const [ready, setReady] = useState(false);
+  const [fontsLoaded] = useFonts({
+    NicoMoji: require('./assets/fonts/NicoMoji-Regular.ttf'),
+  });
 
   async function init() {
     try {
@@ -383,7 +387,7 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  if (!ready) {
+  if (!ready || !fontsLoaded) {
     return (
       <SafeAreaProvider>
         <View style={styles.center}><ActivityIndicator size="large" color={tokens.color.primary} /></View>

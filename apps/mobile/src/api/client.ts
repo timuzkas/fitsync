@@ -40,7 +40,9 @@ const Storage = {
   },
 };
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.214:3000';
+import Constants from 'expo-constants';
+
+const API_BASE = Constants.expoConfig?.extra?.API_URL || process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.214:3000';
 
 async function apiFetch(path: string, options?: RequestInit, timeout = 8000): Promise<Response> {
   const controller = new AbortController();
@@ -94,9 +96,8 @@ export const api = {
     return res.json();
   },
 
-  async syncStrava(deviceId: string, deviceSecret: string, force = false) {
-    const url = force ? '/api/integrations/strava/sync?force=true' : '/api/integrations/strava/sync';
-    const res = await apiFetch(url, {
+  async syncStrava(deviceId: string, deviceSecret: string) {
+    const res = await apiFetch('/api/integrations/strava/sync', {
       method: 'POST',
       headers: headers(deviceId, deviceSecret),
     }, 30000);

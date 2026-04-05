@@ -41,9 +41,8 @@ export async function fetchStravaActivities(accessToken: string, after?: number)
   }
 
   const activities = await response.json();
-  
-  // Strava returns oldest first by default, sort to newest first
-  return activities.sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+  console.log('[fetchStravaActivities] Got', activities.length, 'activities');
+  return activities;
 }
 
 export async function fetchStravaActivityStreams(
