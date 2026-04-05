@@ -40,7 +40,6 @@ services:
         condition: service_healthy
     command: >
       sh -c "npm run generate --workspace=@fitsync/prisma &&
-             npm run db:push --workspace=@fitsync/prisma &&
              npm run dev --workspace=backend"
 
 volumes:
