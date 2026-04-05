@@ -32,6 +32,7 @@ export default function PlanScreen() {
   const [expanded, setExpanded] = useState(false);
   const [saved, setSaved] = useState(false);
   const [readiness, setReadiness] = useState(0.7);
+  const [hideRestDays, setHideRestDays] = useState(false);
 
   const handleSavePlan = useCallback(() => {
     if (target) {
@@ -75,8 +76,8 @@ export default function PlanScreen() {
 
     const defaults = {
       freeDays: ['wed', 'sat', 'sun'],
-      weeklyTargetKm: 40,
-      longRunTargetKm: 15,
+      weeklyTargetKm: 30,
+      longRunTargetKm: 12,
       sessionsPerWeek: 3,
     };
     const config = planConfig ? { ...defaults, ...planConfig } : defaults;
@@ -114,7 +115,8 @@ export default function PlanScreen() {
 
   const todayPlan = dailyPlan.find(d => d.dayNum === 1);
   const tomorrowPlan = dailyPlan.find(d => d.dayNum === 2);
-  const upcomingPlan = dailyPlan.slice(expanded ? undefined : 3);
+  const upcomingPlanRaw = dailyPlan.slice(expanded ? undefined : 3);
+  const upcomingPlan = hideRestDays ? upcomingPlanRaw.filter(d => d.type !== 'Rest') : upcomingPlanRaw;
 
   const formatPace = (sec: number) => {
     if (!sec) return '--';
@@ -239,6 +241,11 @@ export default function PlanScreen() {
                         {getVdotZoneLabel(todayPlan.vdotZone)}
                       </Text>
                     </View>
+                    {todayPlan.isTaper && (
+                      <View style={styles.taperBadge}>
+                        <Text style={styles.taperBadgeText}>↓ TAPER</Text>
+                      </View>
+                    )}
                     {todayPlan.rpe > 0 && (
                       <Text style={styles.rpeText}>RPE: {todayPlan.rpe}</Text>
                     )}
@@ -299,15 +306,26 @@ export default function PlanScreen() {
 
         {upcomingPlan.length > 0 && (
           <>
-            <TouchableOpacity 
-              style={styles.expandBtn} 
-              onPress={() => setExpanded(!expanded)}
-            >
-              <Text style={styles.expandBtnText}>
-                {expanded ? 'Show Less' : `Show ${upcomingPlan.length} more days`}
-              </Text>
-              <Text style={styles.expandBtnIcon}>{expanded ? '▲' : '▼'}</Text>
-            </TouchableOpacity>
+            <View style={styles.upcomingHeader}>
+              <TouchableOpacity 
+                style={styles.expandBtn} 
+                onPress={() => setExpanded(!expanded)}
+              >
+                <Text style={styles.expandBtnText}>
+                  {expanded ? 'Show Less' : `Show more days`}
+                </Text>
+                <Text style={styles.expandBtnIcon}>{expanded ? '▲' : '▼'}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.toggleBtn, hideRestDays && styles.toggleBtnActive]}
+                onPress={() => setHideRestDays(!hideRestDays)}
+              >
+                <Text style={[styles.toggleBtnText, hideRestDays && styles.toggleBtnTextActive]}>
+                  {hideRestDays ? 'Show Rest' : 'Hide Rest'}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             {upcomingPlan.map((day, idx) => (
               <View key={day.date} style={styles.dayCard}>
@@ -316,10 +334,17 @@ export default function PlanScreen() {
                     <Text style={styles.dayName}>{day.dayOfWeek}, {formatDate(day.date)}</Text>
                     <Text style={styles.dayNum}>Day {day.dayNum}</Text>
                   </View>
-                  <View style={[styles.dayTypeBadge, { backgroundColor: getDayTypeColor(day.type) + '20' }]}>
-                    <Text style={[styles.dayTypeText, { color: getDayTypeColor(day.type) }]}>
-                      {day.type.toUpperCase()}
-                    </Text>
+                  <View style={styles.badgeRow}>
+                    {day.isTaper && (
+                      <View style={styles.taperBadge}>
+                        <Text style={styles.taperBadgeText}>↓ TAPER</Text>
+                      </View>
+                    )}
+                    <View style={[styles.dayTypeBadge, { backgroundColor: getDayTypeColor(day.type) + '20' }]}>
+                      <Text style={[styles.dayTypeText, { color: getDayTypeColor(day.type) }]}>
+                        {day.type.toUpperCase()}
+                      </Text>
+                    </View>
                   </View>
                 </View>
                 
@@ -435,12 +460,37 @@ const styles = StyleSheet.create({
   tomorrowMetrics: { flexDirection: 'row', gap: tokens.space.sm },
   tomorrowMetric: { fontSize: tokens.font.sm, color: tokens.color.textSecondary },
 
+  upcomingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: tokens.space.sm,
+  },
   expandBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: tokens.space.xs,
-    paddingVertical: tokens.space.sm, marginBottom: tokens.space.md,
+    flexDirection: 'row', alignItems: 'center', gap: tokens.space.xs,
+    paddingVertical: tokens.space.sm,
   },
   expandBtnText: { fontSize: tokens.font.sm, color: tokens.color.primary, fontWeight: '600' },
   expandBtnIcon: { fontSize: 12, color: tokens.color.primary },
+  toggleBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  toggleBtnActive: {
+    backgroundColor: tokens.color.primary,
+    borderColor: tokens.color.primary,
+  },
+  toggleBtnText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: tokens.color.textSecondary,
+  },
+  toggleBtnTextActive: {
+    color: '#fff',
+  },
 
   dayCard: {
     backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md,
@@ -449,6 +499,18 @@ const styles = StyleSheet.create({
   dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: tokens.space.sm },
   dayName: { fontSize: tokens.font.sm, color: tokens.color.textMuted },
   dayNum: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
+  badgeRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  taperBadge: {
+    backgroundColor: tokens.color.accent + '20',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  taperBadgeText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: tokens.color.accent,
+  },
   dayTypeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   dayTypeText: { fontSize: 9, fontWeight: 'bold' },
   dayContent: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm },

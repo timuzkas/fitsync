@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { tokens } from '../../tokens';
 
 interface WorkoutCardProps {
@@ -37,11 +37,10 @@ function fmtDate(s: string) {
 
 export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const ls = workout.loadScore;
+  const ls = workout?.loadScore;
   const hasLoad = ls && (ls.cardio + ls.legs + ls.upper + ls.core + ls.systemic) > 0;
-  const typeColor = TYPE_COLORS[workout.type] || tokens.color.textMuted;
-
-  const hasDistance = workout.distanceM != null && workout.distanceM > 0;
+  const typeColor = TYPE_COLORS[workout?.type] || tokens.color.textMuted;
+  const hasDistance = workout?.distanceM != null && workout?.distanceM > 0;
 
   return (
     <View style={styles.container}>
@@ -50,46 +49,42 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
         activeOpacity={0.75}
         style={[styles.card, expanded && styles.cardExpanded]}
       >
-        {/* Color stripe */}
         <View style={[styles.stripe, { backgroundColor: typeColor }]} />
-
         <View style={styles.inner}>
           <View style={styles.header}>
             <View style={styles.left}>
-              <Text style={styles.icon}>{TYPE_ICONS[workout.type] || '⚡'}</Text>
+              <Text style={styles.icon}>{TYPE_ICONS[workout?.type] || '⚡'}</Text>
               <View>
                 <Text style={styles.title}>
-                  {workout.title || `${workout.type.charAt(0).toUpperCase() + workout.type.slice(1)}`}
+                  {workout?.title || `${workout?.type?.charAt(0).toUpperCase() + workout?.type?.slice(1)}`}
                 </Text>
-                <Text style={styles.date}>{fmtDate(workout.startedAt)}</Text>
+                <Text style={styles.date}>{fmtDate(workout?.startedAt)}</Text>
               </View>
             </View>
-
             <View style={styles.right}>
               {hasDistance ? (
                 <>
                   <Text style={[styles.mainMetric, { color: tokens.color.textPrimary }]}>
-                    {(workout.distanceM / 1000).toFixed(1)}
+                    {((workout?.distanceM || 0) / 1000).toFixed(1)}
                   </Text>
                   <Text style={styles.unit}>km</Text>
                 </>
               ) : (
                 <>
                   <Text style={[styles.mainMetric, { color: tokens.color.textPrimary }]}>
-                    {Math.round(workout.durationSec / 60)}
+                    {Math.round(workout?.durationSec / 60)}
                   </Text>
                   <Text style={styles.unit}>min</Text>
                 </>
               )}
             </View>
           </View>
-
           <View style={styles.chips}>
-            <Chip text={fmtDur(workout.durationSec)} />
-            {workout.avgHr != null && workout.avgHr > 0 && (
+            <Chip text={fmtDur(workout?.durationSec)} />
+            {workout?.avgHr != null && workout?.avgHr > 0 && (
               <Chip text={`${workout.avgHr} bpm`} color={tokens.color.danger} />
             )}
-            {workout.calories != null && workout.calories > 0 && (
+            {workout?.calories != null && workout?.calories > 0 && (
               <Chip text={`${Math.round(workout.calories)} kcal`} />
             )}
           </View>
@@ -109,7 +104,36 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
             </View>
           )}
 
-          {workout.hrZoneTimes && Object.keys(workout.hrZoneTimes).length > 0 && (
+          {ls?.sourceDetail?.type === 'hevy_parsed' && ls.sourceDetail.volume && (
+            <View style={styles.detailSection}>
+              <Text style={styles.sectionTitle}>Hevy Volume</Text>
+              <View style={styles.loadGrid}>
+                {ls.sourceDetail.volume.legs > 0 && (
+                  <HevyVolumeChip
+                    label="Legs"
+                    value={ls.sourceDetail.volume.legs}
+                    color={tokens.color.success}
+                  />
+                )}
+                {ls.sourceDetail.volume.upper > 0 && (
+                  <HevyVolumeChip
+                    label="Upper"
+                    value={ls.sourceDetail.volume.upper}
+                    color={tokens.color.warning}
+                  />
+                )}
+                {ls.sourceDetail.volume.core > 0 && (
+                  <HevyVolumeChip
+                    label="Core"
+                    value={ls.sourceDetail.volume.core}
+                    color={tokens.color.accent}
+                  />
+                )}
+              </View>
+            </View>
+          )}
+
+          {workout?.hrZoneTimes && Object.keys(workout.hrZoneTimes).length > 0 && (
             <View style={styles.detailSection}>
               <Text style={styles.sectionTitle}>HR Zones</Text>
               <View style={styles.zones}>
@@ -129,7 +153,7 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
 
           {onDelete && (
             <TouchableOpacity
-              onPress={() => onDelete(workout.id)}
+              onPress={() => onDelete(workout?.id)}
               style={styles.dangerZone}
             >
               <Text style={styles.dangerText}>Remove Workout</Text>
@@ -160,6 +184,26 @@ function LoadChip({ label, value, color }: { label: string; value: number; color
   );
 }
 
+function HevyVolumeChip({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <View style={styles.loadChip}>
+      <View style={[styles.chipIndicator, { backgroundColor: color }]} />
+      <Text style={styles.chipLabel}>{label}</Text>
+      <Text style={[styles.chipValue, { color }]}>
+        {value >= 1000 ? `${(value / 1000).toFixed(1)}t` : `${Math.round(value)}kg`}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: {
     marginBottom: tokens.space.sm,
@@ -170,7 +214,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.color.border,
     flexDirection: 'row',
-    overflow: 'hidden',
   },
   cardExpanded: {
     borderBottomLeftRadius: 0,
@@ -181,6 +224,8 @@ const styles = StyleSheet.create({
     width: 3,
     borderTopLeftRadius: tokens.radius.lg,
     borderBottomLeftRadius: tokens.radius.lg,
+    marginVertical: tokens.space.sm,
+    borderRadius: tokens.radius.full,
   },
   inner: {
     flex: 1,

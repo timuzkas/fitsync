@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { tokens } from '../tokens';
@@ -33,6 +33,13 @@ export default function SettingsScreen() {
   const { deviceId, deviceSecret, athleteProfile, setAthleteProfile } = useDeviceStore();
 
   const [freeDays, setFreeDays] = useState<string[]>([]);
+  const [maxHR, setMaxHR] = useState(athleteProfile?.maxHR?.toString() || '');
+  const [restHR, setRestHR] = useState(athleteProfile?.restHR?.toString() || '');
+
+  useEffect(() => {
+    if (athleteProfile?.maxHR) setMaxHR(athleteProfile.maxHR.toString());
+    if (athleteProfile?.restHR) setRestHR(athleteProfile.restHR.toString());
+  }, [athleteProfile]);
 
   function toggleDay(dayId: string) {
     setFreeDays(prev =>
@@ -42,6 +49,28 @@ export default function SettingsScreen() {
             DAYS.findIndex(d => d.id === a) - DAYS.findIndex(d => d.id === b)
           )
     );
+  }
+
+  function saveHR() {
+    const max = parseInt(maxHR);
+    const rest = parseInt(restHR);
+    
+    if (maxHR && (isNaN(max) || max < 100 || max > 220)) {
+      Alert.alert('Invalid Max HR', 'Max HR should be between 100-220 BPM');
+      return;
+    }
+    if (restHR && (isNaN(rest) || rest < 30 || rest > 100)) {
+      Alert.alert('Invalid Rest HR', 'Resting HR should be between 30-100 BPM');
+      return;
+    }
+
+    const profile = {
+      ...athleteProfile,
+      maxHR: maxHR ? max : undefined,
+      restHR: restHR ? rest : undefined,
+    };
+    setAthleteProfile(profile);
+    Alert.alert('Saved', 'Heart rate settings updated');
   }
 
   function savePlanSettings() {
@@ -103,6 +132,39 @@ export default function SettingsScreen() {
           </View>
           <Text style={styles.rowArrow}>›</Text>
         </TouchableOpacity>
+
+        {/* Heart Rate Settings */}
+        <Text style={styles.sectionLabel}>HEART RATE ZONES</Text>
+
+        <View style={styles.hrCard}>
+          <View style={styles.hrRow}>
+            <View style={styles.hrInputGroup}>
+              <Text style={styles.hrLabel}>Max HR</Text>
+              <TextInput
+                style={styles.hrInput}
+                value={maxHR}
+                onChangeText={setMaxHR}
+                keyboardType="numeric"
+                placeholder="190"
+                placeholderTextColor={tokens.color.textTertiary}
+              />
+            </View>
+            <View style={styles.hrInputGroup}>
+              <Text style={styles.hrLabel}>Resting HR</Text>
+              <TextInput
+                style={styles.hrInput}
+                value={restHR}
+                onChangeText={setRestHR}
+                keyboardType="numeric"
+                placeholder="60"
+                placeholderTextColor={tokens.color.textTertiary}
+              />
+            </View>
+          </View>
+          <TouchableOpacity style={styles.hrSaveBtn} onPress={saveHR}>
+            <Text style={styles.hrSaveBtnText}>Save HR Settings</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Plan settings */}
         <Text style={styles.sectionLabel}>TRAINING SCHEDULE</Text>
@@ -285,6 +347,51 @@ const styles = StyleSheet.create({
     color: tokens.color.primary,
     marginTop: tokens.space.sm,
     fontWeight: '600',
+  },
+
+  hrCard: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    padding: tokens.space.lg,
+  },
+  hrRow: {
+    flexDirection: 'row',
+    gap: tokens.space.md,
+    marginBottom: tokens.space.lg,
+  },
+  hrInputGroup: {
+    flex: 1,
+  },
+  hrLabel: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textSecondary,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  hrInput: {
+    backgroundColor: tokens.color.elevated,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1.5,
+    borderColor: tokens.color.border,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 14,
+    fontSize: tokens.font.xl,
+    color: tokens.color.textPrimary,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  hrSaveBtn: {
+    backgroundColor: tokens.color.primary,
+    borderRadius: tokens.radius.sm,
+    paddingVertical: tokens.space.md,
+    alignItems: 'center',
+  },
+  hrSaveBtnText: {
+    color: '#fff',
+    fontSize: tokens.font.sm,
+    fontWeight: '700',
   },
 
   footer: {

@@ -1,0 +1,25 @@
+FROM node:20-alpine
+
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# The monorepo needs access to root package.json for workspace resolution
+COPY package.json package-lock.json* ./
+COPY apps/backend/package.json ./apps/backend/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/prisma/package.json ./packages/prisma/
+
+# Install dependencies for all relevant workspaces
+RUN npm install
+
+# We don't COPY the whole code here because we'll mount it as a volume for dev
+# But we need the prisma schema to run generation if not mounted yet
+COPY packages/prisma/schema.prisma ./packages/prisma/
+
+EXPOSE 3000
+
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+# Note: The command is handled in docker-compose.dev.yml

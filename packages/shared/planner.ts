@@ -38,7 +38,7 @@ export function planSeason(aRaceDate: Date, startDate: Date): TrainingCycle {
   const taperWeeks = 2;
   const mainTrainingWeeks = totalWeeks - taperWeeks;
 
-  if (mainTrainingWeeks >= 16) {
+  if (mainTrainingWeeks >= 18) {
     // Full 4 phases, 4 weeks each if possible
     const phaseLen = Math.floor(mainTrainingWeeks / 4);
     const remainder = mainTrainingWeeks % 4;
@@ -47,7 +47,7 @@ export function planSeason(aRaceDate: Date, startDate: Date): TrainingCycle {
     phases.push({ type: 'Economy', startWeek: phases[0].endWeek + 1, endWeek: phases[0].endWeek + phaseLen + (remainder > 1 ? 1 : 0), focusZone: 'R' });
     phases.push({ type: 'Threshold', startWeek: phases[1].endWeek + 1, endWeek: phases[1].endWeek + phaseLen + (remainder > 2 ? 1 : 0), focusZone: 'T' });
     phases.push({ type: 'Peak', startWeek: phases[2].endWeek + 1, endWeek: mainTrainingWeeks, focusZone: 'I' });
-  } else if (mainTrainingWeeks >= 10) {
+  } else if (mainTrainingWeeks >= 12) {
     // Compress phases to min weeks proportionally
     // Min weeks: Ph1:1, Ph2:2, Ph3:2, Ph4:2 (Total 7)
     const ph1 = 1 + Math.floor((mainTrainingWeeks - 7) / 4);
@@ -81,7 +81,7 @@ export function planSeason(aRaceDate: Date, startDate: Date): TrainingCycle {
 
 export interface DayPlan {
   date: Date;
-  type: 'Rest' | 'Easy' | 'Long' | 'Quality';
+  type: 'Rest' | 'Easy' | 'Long' | 'Quality' | 'Race';
   zone?: keyof typeof VDOT_COEFFS;
   durationMin: number;
   distanceKm: number;
@@ -99,8 +99,17 @@ export function planWeek(
   availableDays: number[], // 0-6 (Sun-Sat)
   weeklyTargetKm: number,
   vdot: number,
-  chronicLoad: number = 0
+  chronicLoad: number = 0,
+  aRaceDate?: Date,
+  aRaceDistance?: number
 ): DayPlan[] {
+  let adjustedTarget = weeklyTargetKm;
+  if (phase.type === 'Taper') {
+    adjustedTarget *= 0.75; // 25% reduction for taper weeks
+  } else if (phase.type === 'Recovery') {
+    adjustedTarget *= 0.50; // 50% reduction for recovery weeks
+  }
+
   const week: DayPlan[] = [];
   const days: Date[] = [];
   for (let i = 0; i < 7; i++) {
@@ -111,63 +120,109 @@ export function planWeek(
 
   // 1. Identify available days
   const availableIndices = availableIndicesFromDays(availableDays);
-  const numAvailable = availableIndices.length;
-
+  
   // 2. Determine Quality Sessions based on Phase
   const qualitySessions: { zone: keyof typeof VDOT_COEFFS; distance: number }[] = [];
-  const maxQuality = numAvailable >= 3 ? 2 : (numAvailable > 0 ? 1 : 0);
+  const maxQuality = availableIndices.length >= 3 ? 2 : (availableIndices.length > 0 ? 1 : 0);
+  
+  // Rotating quality zone for variety if maxQuality is 1
+  const weekNum = Math.floor(startDate.getTime() / (1000 * 60 * 60 * 24 * 7));
+  const isAltWeek = weekNum % 2 === 0;
 
-  if (phase.type === 'Economy' && maxQuality >= 1) {
-    qualitySessions.push({ zone: 'R', distance: Math.min(weeklyTargetKm * 0.05, 5) });
+  if (phase.type === 'Recovery') {
+    // No quality sessions in recovery phase
+  } else if (phase.type === 'Taper') {
+    // Taper keeps one quality session but reduces intensity or duration
+    if (maxQuality >= 1) {
+      qualitySessions.push({ zone: 'T', distance: Math.round(adjustedTarget * 0.1 * 10) / 10 });
+    }
+  } else if (phase.type === 'Base') {
+    // Add light variety even in Base phase (Strides/Tempo every other week)
+    if (maxQuality >= 1 && isAltWeek) {
+      const zone: keyof typeof VDOT_COEFFS = (weekNum % 4 === 0) ? 'R' : 'T';
+      qualitySessions.push({ zone, distance: Math.round(adjustedTarget * 0.08 * 10) / 10 });
+    }
+  } else if (phase.type === 'Economy' && maxQuality >= 1) {
+    if (maxQuality === 1 && isAltWeek) {
+       qualitySessions.push({ zone: 'T', distance: Math.round(adjustedTarget * 0.1 * 10) / 10 });
+    } else {
+       qualitySessions.push({ zone: 'R', distance: Math.min(Math.round(adjustedTarget * 0.05 * 10) / 10, 5) });
+    }
   } else if (phase.type === 'Threshold' && maxQuality >= 1) {
-    qualitySessions.push({ zone: 'T', distance: weeklyTargetKm * 0.1 });
+    qualitySessions.push({ zone: 'T', distance: Math.round(adjustedTarget * 0.1 * 10) / 10 });
     if (maxQuality >= 2) {
-      qualitySessions.push({ zone: 'T', distance: weeklyTargetKm * 0.1 });
+      qualitySessions.push({ zone: 'T', distance: Math.round(adjustedTarget * 0.1 * 10) / 10 });
     }
   } else if (phase.type === 'Peak' && maxQuality >= 1) {
-    qualitySessions.push({ zone: 'I', distance: Math.min(weeklyTargetKm * 0.08, 10) });
+    if (maxQuality === 1 && isAltWeek) {
+       qualitySessions.push({ zone: 'T', distance: Math.round(adjustedTarget * 0.1 * 10) / 10 });
+    } else {
+       qualitySessions.push({ zone: 'I', distance: Math.min(Math.round(adjustedTarget * 0.08 * 10) / 10, 10) });
+    }
     if (maxQuality >= 2) {
-      qualitySessions.push({ zone: 'T', distance: weeklyTargetKm * 0.1 });
+      qualitySessions.push({ zone: 'T', distance: Math.round(adjustedTarget * 0.1 * 10) / 10 });
     }
   }
 
   // 3. Place Quality Sessions (Spaced apart, no consecutive)
   const plan: (DayPlan | null)[] = new Array(7).fill(null);
+
+  // Check if A-Race is in this week
+  let raceIdx = -1;
+  if (aRaceDate) {
+    raceIdx = days.findIndex(d => d.toDateString() === aRaceDate.toDateString());
+    if (raceIdx !== -1) {
+      plan[raceIdx] = createSession(days[raceIdx], 'Race', 'I', Math.round((aRaceDistance || 10) * 10) / 10, vdot);
+      plan[raceIdx]!.rpe = 10; // Max effort for race
+    }
+  }
   
   if (qualitySessions.length > 0) {
-    if (qualitySessions.length === 1) {
-      // Place in middle of week (Wed/Thu) if available, or first available
-      const preferred = [3, 2, 4, 1, 5, 0, 6];
-      const idx = preferred.find(i => availableIndices.includes(i)) ?? availableIndices[0];
+    const qualityDays = availableIndices.filter(i => i !== raceIdx);
+    if (qualitySessions.length === 1 && qualityDays.length > 0) {
+      // Place quality session as far from race as possible
+      const idx = qualityDays.sort((a, b) => Math.abs(b - (raceIdx === -1 ? 3 : raceIdx)) - Math.abs(a - (raceIdx === -1 ? 3 : raceIdx)))[0];
       plan[idx] = createSession(days[idx], 'Quality', qualitySessions[0].zone, qualitySessions[0].distance, vdot);
-    } else {
-      // Place two sessions spaced out (Tue & Thu or Wed & Sat etc)
-      let first = availableIndices.find(i => i >= 1) ?? availableIndices[0];
-      let second = availableIndices.find(i => i >= first + 2) ?? availableIndices.find(i => i > first + 1);
+    } else if (qualitySessions.length >= 2 && qualityDays.length >= 2) {
+      // Basic spacing
+      let first = qualityDays[0];
+      let second = qualityDays.find(i => i >= first + 2) ?? qualityDays[qualityDays.length - 1];
       
-      if (first !== undefined) {
-        plan[first] = createSession(days[first], 'Quality', qualitySessions[0].zone, qualitySessions[0].distance, vdot);
-      }
-      if (second !== undefined) {
+      plan[first] = createSession(days[first], 'Quality', qualitySessions[0].zone, qualitySessions[0].distance, vdot);
+      if (second !== first) {
         plan[second] = createSession(days[second], 'Quality', qualitySessions[1].zone, qualitySessions[1].distance, vdot);
       }
     }
   }
 
-  // 4. Place Long Run (25-30% of weekly volume)
-  const longRunDist = weeklyTargetKm * 0.28;
-  const longRunIdx = [6, 5, 0].find(i => availableIndices.includes(i) && plan[i] === null && (i === 0 || plan[i-1] === null));
-  if (longRunIdx !== undefined) {
+  // 4. Place Long Run (25-30% of weekly volume) - Rule 2: Never the day before a quality session
+  // Spec Rule 3.6: Cap enforced. Never more than 30% of total planned weekly mileage.
+  const longRunDist = Math.round(Math.min(adjustedTarget * 0.28, adjustedTarget * 0.30) * 10) / 10;
+  
+  // Find a spot for long run that isn't the race or quality day
+  const longRunIdx = [6, 5, 0].find(i => 
+    availableIndices.includes(i) && 
+    plan[i] === null && 
+    (i === 0 || plan[i-1] === null) &&  // day before is empty
+    (i === 6 || plan[i+1] === null)     // day after is empty (Rule 2)
+  );
+
+  // Skip long run in Race week if the race is long (> 10km)
+  const isRaceLong = raceIdx !== -1 && (aRaceDistance || 0) >= 10;
+  if (longRunIdx !== undefined && !isRaceLong && phase.type !== 'Recovery') {
     plan[longRunIdx] = createSession(days[longRunIdx], 'Long', 'E', longRunDist, vdot);
   }
 
   // 5. Fill remaining available days with Easy runs
+  // Spec Rule 3.6: Any single run (even Easy) should not exceed 30% of weekly volume.
   const usedDist = plan.reduce((acc, p) => acc + (p?.distanceKm || 0), 0);
-  const remainingDist = Math.max(0, weeklyTargetKm - usedDist);
+  const remainingDist = Math.max(0, adjustedTarget - usedDist);
   const emptyAvailableIndices = availableIndices.filter(i => plan[i] === null);
   
   if (emptyAvailableIndices.length > 0) {
-    const distPerEasy = remainingDist / emptyAvailableIndices.length;
+    const capPerEasy = Math.round(Math.min(adjustedTarget * 0.20, longRunDist > 0 ? longRunDist : adjustedTarget * 0.3) * 10) / 10;
+    const distPerEasy = Math.round(Math.min(remainingDist / emptyAvailableIndices.length, capPerEasy) * 10) / 10;
+    
     emptyAvailableIndices.forEach(i => {
       plan[i] = createSession(days[i], 'Easy', 'E', distPerEasy, vdot);
     });
@@ -195,8 +250,8 @@ export function planWeek(
       if ((session.type === 'Easy' || session.type === 'Long') && currentLoad > targetLoad) {
         const reductionFactor = Math.max(0.5, targetLoad / currentLoad);
         const oldLoad = session.load;
-        session.distanceKm *= reductionFactor;
-        session.durationMin *= reductionFactor;
+        session.distanceKm = Math.round(session.distanceKm * reductionFactor * 10) / 10;
+        session.durationMin = Math.round(session.durationMin * reductionFactor);
         session.load = Math.round(session.rpe * session.durationMin);
         currentLoad -= (oldLoad - session.load);
       }

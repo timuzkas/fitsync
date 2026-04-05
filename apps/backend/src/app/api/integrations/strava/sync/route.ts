@@ -164,9 +164,11 @@ export async function POST(request: NextRequest) {
             sourceDetail = { type: 'no_data' };
           }
         } else {
+          // elapsed_time = total session duration including rest periods (for Foster RPE load)
+          // moving_time = active time excluding rest (for pace/VDOT calculation)
           const cardioLoad = calculateCardioLoad(
             workoutType,
-            activity.moving_time,
+            activity.elapsed_time,
             activity.average_heartrate,
             activity.max_heartrate,
             activity.distance,
@@ -181,7 +183,7 @@ export async function POST(request: NextRequest) {
           });
           sourceDetail = { type: 'cardio' };
 
-          // VDOT UPDATE TRIGGER (Spec 4.2)
+          // VDOT UPDATE TRIGGER (Spec 4.2) - use moving_time for pace-based VDOT
           if (workoutType === 'run' && activity.distance >= 3000 && rpe >= 7) {
             const newVdot = calculateVdot(activity.distance, activity.moving_time / 60);
             if (newVdot > currentVdot) {
@@ -195,7 +197,7 @@ export async function POST(request: NextRequest) {
           where: { externalId },
           update: {
             title: activity.name,
-            durationSec: activity.moving_time,
+            durationSec: activity.elapsed_time,
             calories: activity.calories,
             avgHr: activity.average_heartrate,
             startedAt: new Date(activity.start_date),
@@ -209,7 +211,7 @@ export async function POST(request: NextRequest) {
             externalId,
             type: workoutType,
             title: activity.name,
-            durationSec: activity.moving_time,
+            durationSec: activity.elapsed_time,
             calories: activity.calories,
             avgHr: activity.average_heartrate,
             startedAt: new Date(activity.start_date),

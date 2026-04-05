@@ -28,6 +28,7 @@ export interface DailyPlan extends SharedDayPlan {
   title: string;
   description: string;
   intensity: 'rest' | 'low' | 'medium' | 'high';
+  isTaper: boolean;
   // Fields for PlanScreen compatibility
   dayNum: number;
   dayOfWeek: string;
@@ -47,6 +48,7 @@ export interface PlanConfig {
 
 export const getDayTypeColor = (type: string) => {
   switch (type.toLowerCase()) {
+    case 'race': return tokens.color.warning;
     case 'quality': return tokens.color.primary;
     case 'long': return tokens.color.accent;
     case 'rest': return tokens.color.textTertiary;
@@ -56,6 +58,7 @@ export const getDayTypeColor = (type: string) => {
 
 export const getDayTypeIcon = (type: string) => {
   switch (type.toLowerCase()) {
+    case 'race': return '🏁';
     case 'quality': return '⚡️';
     case 'long': return '🏔';
     case 'rest': return '😴';
@@ -87,17 +90,28 @@ export const generateSmartPlan = (
   const aRaceDate = config.aRaceDate || new Date(target.targetDate);
   const season = planSeason(aRaceDate, startDate);
   
+  // Add 2 weeks of recovery after the race if targetDate is reached
+  const recoveryWeeks = 2;
+  const totalWeeks = season.totalWeeks + recoveryWeeks;
+  
   const freeDayIndices = config.freeDays.map(d => DAY_MAP[d.toLowerCase()] ?? parseInt(d)).filter(n => !isNaN(n));
   
   let allDays: DailyPlan[] = [];
   let chronicLoad = 0; 
   let dayCounter = 1;
   
-  for (let w = 0; w < season.totalWeeks; w++) {
+  for (let w = 0; w < totalWeeks; w++) {
     const weekStartDate = new Date(startDate);
     weekStartDate.setDate(startDate.getDate() + w * 7);
     
-    const phase = season.phases.find(p => w + 1 >= p.startWeek && w + 1 <= p.endWeek) || season.phases[0];
+    let phase = season.phases.find(p => w + 1 >= p.startWeek && w + 1 <= p.endWeek);
+    if (!phase) {
+      if (w + 1 > season.totalWeeks) {
+        phase = { type: 'Recovery', startWeek: season.totalWeeks + 1, endWeek: totalWeeks, focusZone: 'E' };
+      } else {
+        phase = season.phases[0];
+      }
+    }
     
     const weekPlan = planWeek(
       weekStartDate,
@@ -105,7 +119,9 @@ export const generateSmartPlan = (
       freeDayIndices,
       config.weeklyTargetKm,
       vdot,
-      chronicLoad
+      chronicLoad,
+      aRaceDate,
+      target.distanceKm
     );
     
     const mobileWeekPlan: DailyPlan[] = weekPlan.map(dp => {
@@ -122,7 +138,8 @@ export const generateSmartPlan = (
         targetPaceSecPerKm: dp.distanceKm > 0 ? (dp.durationMin * 60) / dp.distanceKm : 0,
         title: getTitle(dp),
         description: getDescription(dp),
-        intensity: getIntensity(dp)
+        intensity: getIntensity(dp),
+        isTaper: phase.type === 'Taper'
       };
     });
     
@@ -142,18 +159,25 @@ export const adaptPlanAfterNewWorkout = (basePlan: DailyPlan[], lastWorkout: any
 
 function getTitle(dp: SharedDayPlan): string {
   if (dp.type === 'Rest') return 'Rest Day';
+  if (dp.type === 'Race') return '🏆 Race Day!';
   if (dp.type === 'Long') return 'Long Run';
-  if (dp.type === 'Quality') return `${dp.zone} Intervals`;
+  if (dp.type === 'Quality') {
+    if (dp.zone === 'T') return 'Tempo Run';
+    if (dp.zone === 'R') return 'Cadence Intervals';
+    return `${dp.zone} Intervals`;
+  }
   return 'Easy Run';
 }
 
 function getDescription(dp: SharedDayPlan): string {
   if (dp.type === 'Rest') return 'Full recovery day. Focus on mobility and sleep.';
+  if (dp.type === 'Race') return `Target: ${dp.distanceKm}km. This is what we trained for. Good luck!`;
   return `${dp.distanceKm}km at ${dp.zone || 'E'} pace. Target duration: ${dp.durationMin} min.`;
 }
 
 function getIntensity(dp: SharedDayPlan): DailyPlan['intensity'] {
   if (dp.type === 'Rest') return 'rest';
+  if (dp.type === 'Race') return 'high';
   if (dp.type === 'Quality') return 'high';
   if (dp.type === 'Long') return 'medium';
   return 'low';

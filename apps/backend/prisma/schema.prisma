@@ -70,7 +70,7 @@ model Workout {
   title                String?
   notes                String?
   isPlanned            Boolean            @default(false)
-  isManual             @default(false)
+  isManual             Boolean            @default(false)
   dedupeHash           String?            // To prevent duplicates across sources
   vdotAtTime           Float?             // VDOT value at the time of this workout
   rpe                  Int?               // Foster RPE (1-10)

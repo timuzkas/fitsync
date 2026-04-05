@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-fitsync_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-fitsync_password}
+      POSTGRES_DB: ${DB_NAME:-fitsync_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitsync_user -d fitsync_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile.dev
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-fitsync_user}:${DB_PASSWORD:-fitsync_password}@db:5432/${DB_NAME:-fitsync_db}?schema=public
+      NODE_ENV: development
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/apps/backend/node_modules
+      - /app/apps/mobile/node_modules
+      - /app/packages/shared/node_modules
+      - /app/packages/prisma/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "npx prisma generate --schema ./packages/prisma/schema.prisma &&
+             npx prisma migrate dev --schema ./packages/prisma/schema.prisma --name init &&
+             npm run dev --workspace=backend"
+
+volumes:
+  postgres_data:
