@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { tokens } from '../../tokens';
@@ -9,23 +10,18 @@ interface MetricRingProps {
   strokeWidth?: number;
 }
 
-export function MetricRing({ value, label, size = 120, strokeWidth = 10 }: MetricRingProps) {
+export function MetricRing({ value, label, size = 120, strokeWidth = 14 }: MetricRingProps) {
   const clamped = Math.max(0, Math.min(100, value));
+  
+  // Use tokens for ring colors
   const ringColor =
-    clamped > 70 ? '#22c55e' :
-    clamped > 40 ? '#f59e0b' :
-    '#ef4444';
-
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * r;
-  const progress = clamped / 100;
-  const dashLength = circumference * 0.75;
-  const dashOffset = circumference * (1 - progress * 0.75);
+    clamped > 70 ? tokens.color.success :
+    clamped > 40 ? tokens.color.warning :
+    tokens.color.danger;
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
+      {/* Background Track */}
       <View style={[
         styles.trackRing,
         {
@@ -33,9 +29,11 @@ export function MetricRing({ value, label, size = 120, strokeWidth = 10 }: Metri
           height: size,
           borderRadius: size / 2,
           borderWidth: strokeWidth,
-          borderColor: tokens.color.border,
+          borderColor: tokens.color.surfaceElevated,
         }
       ]} />
+      
+      {/* Progress Ring - Simplified for React Native View-based drawing */}
       <View
         style={[
           styles.progressRing,
@@ -44,17 +42,19 @@ export function MetricRing({ value, label, size = 120, strokeWidth = 10 }: Metri
             height: size,
             borderRadius: size / 2,
             borderWidth: strokeWidth,
-            borderTopColor: 'transparent',
-            borderRightColor: 'transparent',
-            borderBottomColor: ringColor,
-            borderLeftColor: ringColor,
-            transform: [{ rotate: '-135deg' }],
+            borderTopColor: ringColor,
+            borderRightColor: ringColor,
+            borderBottomColor: 'transparent',
+            borderLeftColor: 'transparent',
+            opacity: 0.9,
+            transform: [{ rotate: '45deg' }],
           }
         ]}
       />
-      <View style={styles.center}>
-        <Text style={styles.value}>{Math.round(clamped)}</Text>
-        <Text style={styles.label}>{label}</Text>
+      
+      <View style={styles.centerContent}>
+        <Text style={styles.valueText}>{Math.round(clamped)}</Text>
+        <Text style={styles.labelText}>{label.toUpperCase()}</Text>
       </View>
     </View>
   );
@@ -71,19 +71,21 @@ const styles = StyleSheet.create({
   progressRing: {
     position: 'absolute',
   },
-  center: {
+  centerContent: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  value: {
-    fontSize: 36,
-    fontWeight: 'bold',
+  valueText: {
+    fontSize: 42,
+    fontWeight: '800',
     color: tokens.color.textPrimary,
-    lineHeight: 40,
+    lineHeight: 48,
   },
-  label: {
-    fontSize: 12,
-    color: tokens.color.textMuted,
-    marginTop: 2,
+  labelText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: tokens.color.textSecondary,
+    marginTop: -2,
+    letterSpacing: 1,
   },
 });

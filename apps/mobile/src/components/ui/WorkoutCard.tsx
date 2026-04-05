@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Card } from '../ui/Card';
-import { Pill } from '../ui/Pill';
 import { tokens } from '../../tokens';
 
 interface WorkoutCardProps {
@@ -34,183 +32,217 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
   const hasLoad = ls && (ls.cardio + ls.legs + ls.upper + ls.core + ls.systemic) > 0;
 
   return (
-    <Card style={styles.card}>
-      <TouchableOpacity onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
+    <View style={styles.container}>
+      <TouchableOpacity 
+        onPress={() => setExpanded(!expanded)} 
+        activeOpacity={0.8}
+        style={[styles.card, expanded && styles.cardExpanded]}
+      >
         <View style={styles.header}>
-          <View style={styles.typeRow}>
-            <Text style={styles.icon}>{TYPE_ICONS[workout.type] || '⚡'}</Text>
-            <Text style={styles.type}>{workout.type}</Text>
-            {workout.isManual && <Pill label="manual" variant="muted" size="sm" />}
-            {workout.isPlanned && <Pill label="planned" variant="primary" size="sm" />}
+          <View style={styles.left}>
+            <View style={[styles.iconContainer, { backgroundColor: workout.type === 'run' ? tokens.color.primary : tokens.color.surfaceElevated }]}>
+              <Text style={styles.icon}>{TYPE_ICONS[workout.type] || '⚡'}</Text>
+            </View>
+            <View>
+              <Text style={styles.title}>{workout.title || `${workout.type.charAt(0).toUpperCase() + workout.type.slice(1)}`}</Text>
+              <Text style={styles.date}>{fmtDate(workout.startedAt)}</Text>
+            </View>
           </View>
-          <View style={styles.dateRow}>
-            <Text style={styles.date}>{fmtDate(workout.startedAt)}</Text>
-            {workout.isManual && onDelete && (
-              <TouchableOpacity 
-                onPress={() => onDelete(workout.id)} 
-                style={styles.deleteBtn}
-              >
-                <Text style={styles.deleteText}>🗑</Text>
-              </TouchableOpacity>
+          <View style={styles.right}>
+            {workout.distanceM != null && workout.distanceM > 0 ? (
+              <Text style={styles.mainMetric}>{(workout.distanceM / 1000).toFixed(1)}<Text style={styles.unit}>km</Text></Text>
+            ) : (
+              <Text style={styles.mainMetric}>{Math.round(workout.durationSec / 60)}<Text style={styles.unit}>min</Text></Text>
             )}
-            <Text style={styles.expand}>{expanded ? '▲' : '▼'}</Text>
           </View>
         </View>
 
-        <Text style={styles.title}>{workout.title || `${workout.type} workout`}</Text>
-
-        <View style={styles.stats}>
-          <Text style={styles.stat}>{fmtDur(workout.durationSec)}</Text>
-          {workout.distanceM != null && workout.distanceM > 0 && (
-            <Text style={styles.stat}>{(workout.distanceM / 1000).toFixed(1)} km</Text>
+        <View style={styles.quickStats}>
+          <Text style={styles.qStat}>{fmtDur(workout.durationSec)}</Text>
+          {workout.avgHr != null && workout.avgHr > 0 && (
+            <Text style={styles.qStat}>{workout.avgHr} bpm</Text>
           )}
           {workout.calories != null && workout.calories > 0 && (
-            <Text style={styles.stat}>{Math.round(workout.calories)} kcal</Text>
-          )}
-          {workout.avgHr != null && workout.avgHr > 0 && (
-            <Text style={styles.stat}>{workout.avgHr} bpm</Text>
+            <Text style={styles.qStat}>{Math.round(workout.calories)} kcal</Text>
           )}
         </View>
       </TouchableOpacity>
 
       {expanded && (
-        <View style={styles.expanded}>
+        <View style={styles.detailsPane}>
           {hasLoad && ls && (
-            <>
-              <Text style={styles.sectionTitle}>Load Impact</Text>
-              <View style={styles.loadChips}>
-                {ls.cardio > 0 && (
-                  <Pill label={`Cardio ${(ls.cardio).toFixed(1)}`} variant="primary" size="sm" />
-                )}
-                {ls.legs > 0 && (
-                  <Pill label={`Legs ${(ls.legs).toFixed(1)}`} variant="success" size="sm" />
-                )}
-                {ls.upper > 0 && (
-                  <Pill label={`Upper ${(ls.upper).toFixed(1)}`} variant="warning" size="sm" />
-                )}
-                {ls.core > 0 && (
-                  <Pill label={`Core ${(ls.core).toFixed(1)}`} variant="muted" size="sm" />
-                )}
-                {ls.systemic > 0 && (
-                  <Pill label={`Systemic ${(ls.systemic).toFixed(1)}`} variant="muted" size="sm" />
-                )}
+            <View style={styles.detailSection}>
+              <Text style={styles.sectionTitle}>Physiological Impact</Text>
+              <View style={styles.loadGrid}>
+                <LoadChip label="Cardio" value={ls.cardio} color={tokens.color.primary} />
+                <LoadChip label="Legs" value={ls.legs} color={tokens.color.success} />
+                <LoadChip label="Systemic" value={ls.systemic} color={tokens.color.accent} />
               </View>
-            </>
+            </View>
           )}
 
-          {workout.hrZoneTimes && Object.keys(workout.hrZoneTimes).length > 0 && workout.hrZoneTimes && (
-            <>
+          {workout.hrZoneTimes && Object.keys(workout.hrZoneTimes).length > 0 && (
+            <View style={styles.detailSection}>
               <Text style={styles.sectionTitle}>HR Zones</Text>
               <View style={styles.zones}>
                 {Object.entries(workout.hrZoneTimes).map(([zone, secs]: [string, any]) => (
                   <View key={zone} style={styles.zone}>
-                    <Text style={styles.zoneName}>{zone.toUpperCase()}</Text>
+                    <Text style={[styles.zoneName, { color: zone === 'z5' ? tokens.color.danger : tokens.color.textSecondary }]}>{zone.toUpperCase()}</Text>
                     <Text style={styles.zoneTime}>{Math.round((secs || 0) / 60)}m</Text>
                   </View>
                 ))}
               </View>
-            </>
+            </View>
           )}
 
-          {workout.exercises && workout.exercises.length > 0 && workout.exercises && (
-            <>
-              <Text style={styles.sectionTitle}>Exercises</Text>
-              {workout.exercises.map((ex: any, i: number) => (
-                <View key={i} style={styles.exItem}>
-                  <Text style={styles.exName}>{ex.name}</Text>
-                  <Text style={styles.exSets}>
-                    {ex.sets && ex.sets.length > 0
-                      ? ex.sets.map((s: any) => `${s.weight}kg × ${s.reps}`).join(', ')
-                      : '—'}
-                  </Text>
-                </View>
-              ))}
-            </>
+          {onDelete && (
+            <TouchableOpacity 
+              onPress={() => onDelete(workout.id)} 
+              style={styles.dangerZone}
+            >
+              <Text style={styles.dangerText}>Remove Workout</Text>
+            </TouchableOpacity>
           )}
         </View>
       )}
-    </Card>
+    </View>
+  );
+}
+
+function LoadChip({ label, value, color }: { label: string, value: number, color: string }) {
+  if (value <= 0) return null;
+  return (
+    <View style={styles.loadChip}>
+      <View style={[styles.chipIndicator, { backgroundColor: color }]} />
+      <Text style={styles.chipLabel}>{label}</Text>
+      <Text style={styles.chipValue}>{value.toFixed(1)}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    marginBottom: tokens.space.sm,
+  },
   card: {
-    marginBottom: tokens.space.mdSm,
+    backgroundColor: tokens.color.surfaceElevated,
+    borderRadius: tokens.radius.lg,
     padding: tokens.space.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  cardExpanded: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
   },
-  typeRow: {
+  left: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.space.xs,
+    gap: tokens.space.md,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: tokens.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   icon: {
+    fontSize: 20,
+  },
+  title: {
     fontSize: tokens.font.md,
-  },
-  type: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.space.xs,
+    fontWeight: '700',
+    color: tokens.color.textPrimary,
   },
   date: {
     fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
+    color: tokens.color.textSecondary,
+    marginTop: 2,
   },
-  deleteBtn: {
-    marginLeft: tokens.space.xs,
+  right: {
+    alignItems: 'flex-end',
   },
-  deleteText: {
-    fontSize: 14,
-    color: tokens.color.textMuted,
-  },
-  expand: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
-  },
-  title: {
-    fontSize: tokens.font.lg,
-    fontWeight: '600',
+  mainMetric: {
+    fontSize: tokens.font.xl,
+    fontWeight: '800',
     color: tokens.color.textPrimary,
-    marginBottom: 6,
   },
-  stats: {
+  unit: {
+    fontSize: tokens.font.xs,
+    fontWeight: '600',
+    color: tokens.color.textSecondary,
+    marginLeft: 2,
+  },
+  quickStats: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: tokens.space.sm,
+    gap: tokens.space.md,
+    marginTop: tokens.space.md,
+    paddingTop: tokens.space.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
   },
-  stat: {
-    fontSize: tokens.font.sm,
+  qStat: {
+    fontSize: 12,
+    fontWeight: '600',
     color: tokens.color.textSecondary,
   },
-  expanded: {
-    marginTop: tokens.space.md,
-    borderTopWidth: 1,
-    borderTopColor: tokens.color.border,
-    paddingTop: tokens.space.md,
+  detailsPane: {
+    backgroundColor: tokens.color.surfaceElevated,
+    borderBottomLeftRadius: tokens.radius.lg,
+    borderBottomRightRadius: tokens.radius.lg,
+    padding: tokens.space.md,
+    paddingTop: 0,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    borderTopWidth: 0,
+  },
+  detailSection: {
+    marginTop: tokens.space.sm,
   },
   sectionTitle: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+    color: tokens.color.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: tokens.space.sm,
     marginTop: tokens.space.sm,
   },
-  loadChips: {
+  loadGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: tokens.space.xs,
+    gap: tokens.space.sm,
+  },
+  loadChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    paddingHorizontal: tokens.space.sm,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.sm,
+    gap: 6,
+  },
+  chipIndicator: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  chipLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: tokens.color.textSecondary,
+  },
+  chipValue: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: tokens.color.textPrimary,
   },
   zones: {
     flexDirection: 'row',
@@ -218,36 +250,32 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
   },
   zone: {
-    backgroundColor: tokens.color.elevated,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.sm,
     paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: tokens.color.border,
+    minWidth: 50,
+    alignItems: 'center',
   },
   zoneName: {
-    fontSize: tokens.font.xs,
-    fontWeight: 'bold',
-    color: tokens.color.danger,
+    fontSize: 10,
+    fontWeight: '800',
   },
   zoneTime: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
-  },
-  exItem: {
-    paddingLeft: tokens.space.sm,
-    borderLeftWidth: 2,
-    borderLeftColor: tokens.color.primary,
-    marginBottom: tokens.space.xs,
-  },
-  exName: {
-    fontSize: tokens.font.sm,
+    fontSize: 12,
+    fontWeight: '600',
     color: tokens.color.textPrimary,
-    fontWeight: '500',
   },
-  exSets: {
+  dangerZone: {
+    marginTop: tokens.space.lg,
+    paddingVertical: tokens.space.sm,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  dangerText: {
     fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
-    marginTop: 2,
+    color: tokens.color.danger,
+    fontWeight: '600',
   },
 });

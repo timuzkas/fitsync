@@ -12,6 +12,11 @@ import {
   DEFAULT_CONFIG, 
   LoadConfig 
 } from '@/lib/load';
+import { 
+  calculateVdot, 
+  suggestRpeFromHrZone, 
+  calculateSessionLoad 
+} from '../../../../../../../../packages/shared/training';
 
 /**
  * PARSER: Extracts muscle-group volume from Hevy's text format
@@ -113,6 +118,9 @@ export async function POST(request: NextRequest) {
     const existingMap = new Map(existingWorkouts.map(w => [w.externalId, w]));
 
     // 5. Parallelize processing of activities
+    let currentVdot = installation.vdot || 40;
+    let vdotUpdated = false;
+
     const syncTasks = stravaActivities.map(async (summaryActivity: any) => {
       const externalId = `strava-${summaryActivity.id}`;
       const existing = existingMap.get(externalId);
@@ -132,9 +140,11 @@ export async function POST(request: NextRequest) {
         
         let loadCalc;
         let sourceDetail: any = null;
+        let rpe = suggestRpeFromHrZone(200, activity.average_heartrate || 120); // Fallback maxHr=200
 
         if (workoutType === 'strength') {
           const hevyData = parseHevyLog(activity.description || "");
+          rpe = 5; // Default for strength per spec
 
           if (hevyData && (hevyData.legs > 0 || hevyData.upper > 0 || hevyData.core > 0)) {
             loadCalc = formatLoad({
@@ -170,6 +180,15 @@ export async function POST(request: NextRequest) {
               systemic: cardioLoad * 0.2 
           });
           sourceDetail = { type: 'cardio' };
+
+          // VDOT UPDATE TRIGGER (Spec 4.2)
+          if (workoutType === 'run' && activity.distance >= 3000 && rpe >= 7) {
+            const newVdot = calculateVdot(activity.distance, activity.moving_time / 60);
+            if (newVdot > currentVdot) {
+              currentVdot = newVdot;
+              vdotUpdated = true;
+            }
+          }
         }
 
         const workout = await prisma.workout.upsert({
@@ -180,6 +199,9 @@ export async function POST(request: NextRequest) {
             calories: activity.calories,
             avgHr: activity.average_heartrate,
             startedAt: new Date(activity.start_date),
+            distanceM: activity.distance,
+            rpe,
+            vdotAtTime: currentVdot
           },
           create: {
             deviceInstallationId: installation.id,
@@ -191,6 +213,9 @@ export async function POST(request: NextRequest) {
             calories: activity.calories,
             avgHr: activity.average_heartrate,
             startedAt: new Date(activity.start_date),
+            distanceM: activity.distance,
+            rpe,
+            vdotAtTime: currentVdot
           },
         });
 
@@ -208,6 +233,13 @@ export async function POST(request: NextRequest) {
     });
 
     const results = await Promise.all(syncTasks);
+
+    if (vdotUpdated) {
+      await prisma.deviceInstallation.update({
+        where: { id: installation.id },
+        data: { vdot: currentVdot }
+      });
+    }
     stats.imported = results.filter(r => r.status === 'imported').length;
     stats.skipped = results.filter(r => r.status === 'skipped').length;
     const failed = results.filter(r => r.status === 'failed').length;

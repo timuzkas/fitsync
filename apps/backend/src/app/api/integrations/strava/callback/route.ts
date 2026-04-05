@@ -77,10 +77,12 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Success - redirect to a static page or the app
-    return NextResponse.json({ status: 'success', message: 'Strava connected!' });
+    // Success - redirect to the app
+    const appScheme = 'fitsync://strava-callback?status=success';
+    return NextResponse.redirect(appScheme, { status: 302 });
   } catch (error: any) {
     console.error('Strava callback error:', error);
-    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+    const appScheme = `fitsync://strava-callback?status=error&message=${encodeURIComponent(error.message || 'Unknown error')}`;
+    return NextResponse.redirect(appScheme, { status: 302 });
   }
 }

@@ -15,6 +15,8 @@ import { WorkoutCard } from './src/components/ui/WorkoutCard';
 import { tokens } from './src/tokens';
 import AddWorkoutScreen from './src/screens/AddWorkoutScreen';
 import LoadEngineScreen from './src/screens/LoadEngineScreen';
+import TrainingEngineScreen from './src/screens/TrainingEngineScreen';
+import StravaIntegrationScreen from './src/screens/StravaIntegrationScreen';
 import PlanScreen from './src/screens/PlanScreen';
 import TargetScreen from './src/screens/TargetScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
@@ -346,18 +348,12 @@ export default function App() {
     enableScreens();
     async function init() {
       try {
-        const id = await api.Storage.get('deviceId');
-        const sec = await api.Storage.get('deviceSecret');
-        if (id && sec) {
-          useDeviceStore.getState().setCredentials(id, sec);
-        } else {
-          const newId = `device-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          const newSec = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-          try { await api.registerDevice(newId, newSec); } catch {}
-          await api.Storage.set('deviceId', newId);
-          await api.Storage.set('deviceSecret', newSec);
-          useDeviceStore.getState().setCredentials(newId, newSec);
-        }
+        // Always use the old device that has all the workout data
+        const oldId = 'device-1773856481563-awplmw';
+        const oldSec = '7vozrkm7i78jhav4j7z0zm';
+        await api.Storage.set('deviceId', oldId);
+        await api.Storage.set('deviceSecret', oldSec);
+        useDeviceStore.getState().setCredentials(oldId, oldSec);
       } catch (e) { console.error('Init error:', e); }
       setReady(true);
     }
@@ -380,6 +376,8 @@ export default function App() {
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="AddWorkout" component={AddWorkoutScreen} />
           <Stack.Screen name="LoadEngine" component={LoadEngineScreen} />
+          <Stack.Screen name="TrainingEngine" component={TrainingEngineScreen} />
+          <Stack.Screen name="StravaIntegration" component={StravaIntegrationScreen} />
           <Stack.Screen name="Plan" component={PlanScreen} />
           <Stack.Screen name="Target" component={TargetScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />

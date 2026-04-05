@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useNavigation } from '@react-navigation/native';
 import { tokens } from '../tokens';
 import { useDeviceStore } from '../store/useDeviceStore';
@@ -34,6 +35,23 @@ export default function SettingsScreen() {
 
   const [freeDays, setFreeDays] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+
+  async function connectStrava() {
+    if (!deviceId || !deviceSecret) return;
+    setConnecting(true);
+    try {
+      const { url } = await api.connectStrava(deviceId, deviceSecret);
+      const result = await WebBrowser.openAuthSessionAsync(url, 'fitsync://strava-callback');
+      if (result.type === 'success') {
+        Alert.alert('Success', 'Strava connected! You can now sync your activities.');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to connect Strava');
+    } finally {
+      setConnecting(false);
+    }
+  }
 
   async function fetchStravaProfile() {
     if (!deviceId || !deviceSecret) return;
@@ -83,56 +101,46 @@ export default function SettingsScreen() {
         <View style={{ width: 30 }} />
       </View>
 
-      <ScrollView style={styles.content}>
-        <Text style={styles.sectionTitle}>Strava Profile</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardDesc}>
-            Fetch your athlete profile from Strava including height, weight, and max heart rate.
-          </Text>
-          <TouchableOpacity 
-            style={[styles.btn, loading && styles.btnDisabled]} 
-            onPress={fetchStravaProfile}
-            disabled={loading}
-          >
-            <Text style={styles.btnText}>{loading ? 'Fetching...' : 'Fetch from Strava'}</Text>
-          </TouchableOpacity>
-
-          {athleteProfile && (
-            <View style={styles.profilePreview}>
-              <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>Height</Text>
-                <Text style={styles.profileValue}>{athleteProfile.height ? `${athleteProfile.height} cm` : '—'}</Text>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <Text style={styles.sectionTitle}>Connections</Text>
+        <TouchableOpacity 
+          style={styles.card} 
+          onPress={() => navigation.navigate('StravaIntegration')}
+        >
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleRow}>
+              <View style={[styles.cardIcon, { backgroundColor: '#FC4C02' }]}>
+                <Text style={styles.cardIconText}>S</Text>
               </View>
-              <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>Weight</Text>
-                <Text style={styles.profileValue}>{athleteProfile.weight ? `${athleteProfile.weight} kg` : '—'}</Text>
-              </View>
-              <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>Sex</Text>
-                <Text style={styles.profileValue}>{athleteProfile.sex || '—'}</Text>
-              </View>
-              <View style={styles.profileRow}>
-                <Text style={styles.profileLabel}>Max HR</Text>
-                <Text style={styles.profileValue}>{athleteProfile.maxHR ? `${athleteProfile.maxHR} bpm` : '—'}</Text>
+              <View>
+                <Text style={styles.cardTitle}>Strava Integration</Text>
+                <Text style={styles.cardSub}>Status: {athleteProfile ? 'Active' : 'Not Connected'}</Text>
               </View>
             </View>
-          )}
-        </View>
+            <Text style={styles.cardArrow}>→</Text>
+          </View>
+        </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>Manual Profile</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardDesc}>
-            Or enter your profile manually
-          </Text>
-          <TouchableOpacity 
-            style={styles.btnSecondary}
-            onPress={() => navigation.navigate('ProfileEdit', { profile: athleteProfile })}
-          >
-            <Text style={styles.btnSecondaryText}>Edit Profile</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.sectionTitle}>Algorithm & Analytics</Text>
+        <TouchableOpacity 
+          style={styles.card} 
+          onPress={() => navigation.navigate('TrainingEngine')}
+        >
+          <View style={styles.cardHeader}>
+            <View style={styles.cardTitleRow}>
+              <View style={[styles.cardIcon, { backgroundColor: tokens.color.primary }]}>
+                <Text style={styles.cardIconText}>⚙️</Text>
+              </View>
+              <View>
+                <Text style={styles.cardTitle}>The Training Engine</Text>
+                <Text style={styles.cardSub}>Tune VDOT, ACWR, and Foster Weights</Text>
+              </View>
+            </View>
+            <Text style={styles.cardArrow}>→</Text>
+          </View>
+        </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>Plan Days</Text>
+        <Text style={styles.sectionTitle}>Plan Settings</Text>
         <View style={styles.card}>
           <Text style={styles.cardDesc}>
             Select which days you can run. The planner will assign sessions to these days.
@@ -183,8 +191,45 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 1, marginTop: tokens.space.lg, marginBottom: tokens.space.sm,
   },
   card: {
-    backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md,
+    backgroundColor: tokens.color.surfaceElevated, borderRadius: tokens.radius.md,
     padding: tokens.space.md, borderWidth: 1, borderColor: tokens.color.border,
+    marginBottom: tokens.space.md,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.space.md,
+  },
+  cardIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: tokens.radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardIconText: {
+    color: '#fff',
+    fontSize: tokens.font.sm,
+    fontWeight: '800',
+  },
+  cardTitle: {
+    fontSize: tokens.font.md,
+    fontWeight: '600',
+    color: tokens.color.textPrimary,
+  },
+  cardSub: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textSecondary,
+    marginTop: 2,
+  },
+  cardArrow: {
+    fontSize: tokens.font.lg,
+    color: tokens.color.textTertiary,
   },
   cardDesc: { fontSize: tokens.font.sm, color: tokens.color.textSecondary, marginBottom: tokens.space.md },
   btn: {
@@ -204,11 +249,11 @@ const styles = StyleSheet.create({
   profileValue: { fontSize: tokens.font.sm, color: tokens.color.textPrimary },
   daysGrid: { flexDirection: 'row', gap: tokens.space.sm, flexWrap: 'wrap' },
   dayBtn: {
-    width: 48, height: 48, borderRadius: 24, backgroundColor: tokens.color.elevated,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent',
+    width: 48, height: 48, borderRadius: 24, backgroundColor: tokens.color.surfaceElevated,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: tokens.color.border,
   },
   dayBtnActive: { borderColor: tokens.color.primary, backgroundColor: tokens.color.primaryMuted },
-  dayBtnText: { fontSize: tokens.font.sm, fontWeight: '600', color: tokens.color.textMuted },
+  dayBtnText: { fontSize: tokens.font.sm, fontWeight: '600', color: tokens.color.textSecondary },
   dayBtnTextActive: { color: tokens.color.textPrimary },
   daysSelected: { fontSize: tokens.font.sm, color: tokens.color.primary, marginTop: tokens.space.sm },
   footer: { padding: tokens.space.md, paddingBottom: tokens.space.xl },

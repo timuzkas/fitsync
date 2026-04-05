@@ -66,12 +66,26 @@ export async function fetchStravaActivityStreams(
   };
 }
 
-export async function fetchDetailedStravaActivity(accessToken: string, activityId: number) {
-  const response = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) throw new Error('Failed to fetch detailed activity');
-  return response.json();
+export async function fetchDetailedStravaActivity(accessToken: string, activityId: number, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      
+      if (!response.ok) throw new Error('Failed to fetch detailed activity');
+      return response.json();
+    } catch (e: any) {
+      if (attempt === retries) throw e;
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+  throw new Error('Max retries exceeded');
 }
 
 export function mapStravaToWorkoutType(stravaType: string): string {

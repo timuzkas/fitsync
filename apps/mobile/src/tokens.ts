@@ -1,28 +1,58 @@
 export const tokens = {
   color: {
-    bg: '#080f1a',
-    surface: '#111827',
-    elevated: '#1a2535',
-    border: '#1e2d40',
-    primary: '#6366f1',
-    primaryMuted: '#312e81',
-    success: '#22c55e',
-    successMuted: '#166534',
-    warning: '#f59e0b',
-    warningMuted: '#92400e',
-    danger: '#ef4444',
-    dangerMuted: '#991b1b',
-    textPrimary: '#f1f5f9',
-    textSecondary: '#94a3b8',
-    textMuted: '#475569',
+    // Pure Black for OLED
+    bg: '#000000',
+    // Glassy surfaces
+    surface: '#121212',
+    surfaceElevated: '#1C1C1E',
+    surfaceGlass: 'rgba(255, 255, 255, 0.08)',
+    
+    // High-contrast border
+    border: '#2C2C2E',
+    
+    // Vibrant Accents
+    primary: '#0A84FF', // Apple Blue
+    accent: '#FF9F0A',  // Apple Orange (Safety Orange)
+    
+    // Semantic
+    success: '#30D158',
+    warning: '#FFD60A',
+    danger: '#FF453A',
+    
+    // Text
+    textPrimary: '#FFFFFF',
+    textSecondary: '#8E8E93',
+    textTertiary: '#48484A',
+    textAccent: '#0A84FF',
   },
   space: {
-    xs: 4, sm: 8, mdSm: 12, md: 16, lg: 24, xl: 32, xxl: 48, hero: 64,
+    base: 4,
+    xs: 4, 
+    sm: 8, 
+    mdSm: 12, 
+    md: 16, 
+    lg: 24, 
+    xl: 32, 
+    xxl: 48, 
+    hero: 64,
   },
   radius: {
-    sm: 8, md: 12, lg: 16, xl: 24, full: 9999,
+    xs: 4,
+    sm: 10, 
+    md: 14, 
+    lg: 20, 
+    xl: 28, 
+    full: 9999,
   },
   font: {
-    xs: 11, sm: 13, md: 15, lg: 17, xl: 22, xxl: 28, hero: 40,
+    xs: 11, 
+    sm: 13, 
+    md: 16, 
+    lg: 18, 
+    xl: 24, 
+    xxl: 32, 
+    hero: 44,
   },
+  // Blur intensity for glassmorphism
+  blur: 20,
 } as const;

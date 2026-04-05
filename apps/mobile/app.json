@@ -8,11 +8,20 @@
     "experiments": {
       "newArchEnabled": false
     },
+    "scheme": "fitsync",
     "android": {
       "package": "xyz.timuzkas.fitsync"
     },
     "ios": {
       "bundleIdentifier": "xyz.timuzkas.fitsync"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f5cb17bd-cc0f-4793-949e-30160a86303c"
+      }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ]
   }
 }

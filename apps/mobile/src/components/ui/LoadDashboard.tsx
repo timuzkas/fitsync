@@ -1,6 +1,6 @@
+
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Card } from '../ui/Card';
 import { LoadBar } from '../ui/LoadBar';
 import { MetricRing } from '../ui/MetricRing';
 import { LoadSparkline } from '../charts/LoadSparkline';
@@ -15,75 +15,120 @@ interface LoadDashboardProps {
 }
 
 export function LoadDashboard({ readiness, current, load7d, load28d, history7d }: LoadDashboardProps) {
-  const totalCurrent = current.cardio + current.legs + current.upper + current.core + current.systemic;
-
   return (
-    <Card style={styles.card}>
-      <View style={styles.topRow}>
-        <MetricRing value={readiness} label="Readiness" size={100} strokeWidth={8} />
-        <View style={styles.bars}>
-          <LoadBar label="Cardio" current={current.cardio} max={100} />
-          <LoadBar label="Legs" current={current.legs} max={100} />
-          <LoadBar label="Upper" current={current.upper} max={100} />
-          <LoadBar label="Core" current={current.core} max={100} />
+    <View style={styles.container}>
+      <View style={styles.heroRow}>
+        <MetricRing value={readiness} label="Readiness" size={140} strokeWidth={16} />
+        
+        <View style={styles.summaryStats}>
+          <View style={styles.summaryStat}>
+            <Text style={styles.summaryLabel}>WEEKLY LOAD</Text>
+            <Text style={styles.summaryValue}>{Math.round(load7d)}</Text>
+          </View>
+          <View style={[styles.summaryStat, { borderLeftColor: tokens.color.accent }]}>
+            <Text style={styles.summaryLabel}>MONTHLY LOAD</Text>
+            <Text style={styles.summaryValue}>{Math.round(load28d)}</Text>
+          </View>
         </View>
       </View>
-      <View style={styles.periods}>
-        <View style={styles.period}>
-          <Text style={styles.periodLabel}>7d Load</Text>
-          {history7d && history7d.length > 0 ? (
-            <LoadSparkline data={history7d} color={tokens.color.primary} showValue valueColor={tokens.color.textPrimary} />
-          ) : (
-            <Text style={styles.periodValue}>{Math.round(load7d)}</Text>
-          )}
+
+      <View style={styles.grid}>
+        <View style={styles.column}>
+          <Text style={styles.sectionTitle}>LOAD TREND (7D)</Text>
+          <View style={styles.sparklineCard}>
+            {history7d && history7d.length > 0 ? (
+              <LoadSparkline data={history7d} color={tokens.color.primary} />
+            ) : (
+              <Text style={styles.emptyText}>No recent data</Text>
+            )}
+          </View>
         </View>
-        <View style={styles.divider} />
-        <View style={styles.period}>
-          <Text style={styles.periodLabel}>28d Load</Text>
-          <Text style={styles.periodValue}>{Math.round(load28d)}</Text>
+
+        <View style={styles.column}>
+          <Text style={styles.sectionTitle}>SYSTEM STRESS</Text>
+          <View style={styles.stressCard}>
+            <LoadBar label="Cardio" current={current.cardio} max={100} color={tokens.color.primary} />
+            <LoadBar label="Legs" current={current.legs} max={100} color={tokens.color.success} />
+            <LoadBar label="Upper" current={current.upper} max={100} color={tokens.color.warning} />
+            <LoadBar label="Core" current={current.core} max={100} color={tokens.color.accent} />
+          </View>
         </View>
       </View>
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginBottom: tokens.space.mdSm,
+  container: {
+    marginBottom: tokens.space.lg,
   },
-  topRow: {
+  heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.space.md,
-    marginBottom: tokens.space.md,
+    gap: tokens.space.xl,
+    paddingVertical: tokens.space.md,
   },
-  bars: {
+  summaryStats: {
     flex: 1,
+    gap: tokens.space.lg,
   },
-  periods: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: tokens.color.border,
-    paddingTop: tokens.space.md,
+  summaryStat: {
+    borderLeftWidth: 3,
+    borderLeftColor: tokens.color.primary,
+    paddingLeft: tokens.space.md,
+    paddingVertical: 2,
   },
-  period: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
+  summaryLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: tokens.color.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: 2,
   },
-  periodLabel: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  periodValue: {
-    fontSize: tokens.font.xl,
-    fontWeight: 'bold',
+  summaryValue: {
+    fontSize: 28,
+    fontWeight: '800',
     color: tokens.color.textPrimary,
   },
-  divider: {
-    width: 1,
-    backgroundColor: tokens.color.border,
+  grid: {
+    flexDirection: 'row',
+    gap: tokens.space.md,
+    marginTop: tokens.space.md,
+  },
+  column: {
+    flex: 1,
+  },
+  sectionTitle: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: tokens.color.textTertiary,
+    letterSpacing: 1.2,
+    marginBottom: tokens.space.sm,
+    marginLeft: 2,
+  },
+  sparklineCard: {
+    backgroundColor: tokens.color.surfaceElevated,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.space.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    height: 90,
+    justifyContent: 'center',
+  },
+  stressCard: {
+    backgroundColor: tokens.color.surfaceElevated,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.space.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    height: 90,
+    justifyContent: 'center',
+    gap: 4,
+  },
+  emptyText: {
+    fontSize: 10,
+    color: tokens.color.textTertiary,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
