@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+console.log('[CALLBACK] Module loaded');
+
 export async function GET(request: NextRequest) {
-  console.log('=== Strava callback START ===');
+  console.log('[CALLBACK] Request received');
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
