@@ -6,8 +6,8 @@ import {
 } from '@/lib/load';
 
 export async function GET(request: Request) {
-  const deviceId = request.headers.get('x-device-id');
-  const deviceSecret = request.headers.get('x-device-secret');
+  const deviceId = String(request.headers.get('x-device-id') || '');
+  const deviceSecret = String(request.headers.get('x-device-secret') || '');
 
   if (!deviceId || !deviceSecret) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

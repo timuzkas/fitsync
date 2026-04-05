@@ -3,7 +3,10 @@ import { prisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
   try {
-    const { deviceId, deviceSecret, appVersion } = await request.json();
+    const body = await request.json();
+    const deviceId = String(body.deviceId || '');
+    const deviceSecret = String(body.deviceSecret || '');
+    const appVersion = body.appVersion ? String(body.appVersion) : undefined;
 
     if (!deviceId || !deviceSecret) {
       return NextResponse.json({ error: 'Missing deviceId or deviceSecret' }, { status: 400 });
@@ -12,7 +15,7 @@ export async function POST(request: Request) {
     const installation = await prisma.deviceInstallation.upsert({
       where: { deviceId },
       update: {
-        deviceSecret, // In a real app, maybe don't overwrite this without verification
+        deviceSecret,
         appVersion,
         lastSeenAt: new Date(),
       },
@@ -24,8 +27,8 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ installationId: installation.id });
-  } catch (error) {
-    console.error('Registration error:', error);
+  } catch (error: any) {
+    console.error('Registration error:', error.message);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

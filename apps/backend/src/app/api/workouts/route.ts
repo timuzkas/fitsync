@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(request: Request) {
-  const deviceId = request.headers.get('x-device-id');
-  const deviceSecret = request.headers.get('x-device-secret');
+  const deviceId = String(request.headers.get('x-device-id') || '');
+  const deviceSecret = String(request.headers.get('x-device-secret') || '');
 
   if (!deviceId || !deviceSecret) {
     return NextResponse.json({ error: 'Missing X-Device-Id or X-Device-Secret' }, { status: 401 });
@@ -33,10 +33,10 @@ export async function GET(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const deviceId = request.headers.get('x-device-id');
-  const deviceSecret = request.headers.get('x-device-secret');
+  const deviceId = String(request.headers.get('x-device-id') || '');
+  const deviceSecret = String(request.headers.get('x-device-secret') || '');
   const { searchParams } = new URL(request.url);
-  const id = searchParams.get('id');
+  const id = String(searchParams.get('id') || '');
 
   if (!deviceId || !deviceSecret || !id) {
     return NextResponse.json({ error: 'Missing credentials or workout ID' }, { status: 400 });

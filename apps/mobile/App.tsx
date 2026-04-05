@@ -347,20 +347,40 @@ const styles = StyleSheet.create({
 export default function App() {
   const [ready, setReady] = useState(false);
 
+  async function init() {
+    try {
+      let storedId = await api.Storage.get('deviceId');
+      let storedSec = await api.Storage.get('deviceSecret');
+      
+      if (!storedId || !storedSec) {
+        const newId = `device-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+        const newSec = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        await api.Storage.set('deviceId', newId);
+        await api.Storage.set('deviceSecret', newSec);
+        await api.registerDevice(newId, newSec);
+        storedId = newId;
+        storedSec = newSec;
+      }
+      useDeviceStore.getState().setCredentials(storedId, storedSec);
+    } catch (e) { console.error('Init error:', e); }
+    setReady(true);
+  }
+
   useEffect(() => {
     enableScreens();
-    async function init() {
-      try {
-        // Always use the old device that has all the workout data
-        const oldId = 'device-1773856481563-awplmw';
-        const oldSec = '7vozrkm7i78jhav4j7z0zm';
-        await api.Storage.set('deviceId', oldId);
-        await api.Storage.set('deviceSecret', oldSec);
-        useDeviceStore.getState().setCredentials(oldId, oldSec);
-      } catch (e) { console.error('Init error:', e); }
-      setReady(true);
-    }
     init();
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = useDeviceStore.subscribe(
+      (state) => state.deviceId,
+      (deviceId, prevDeviceId) => {
+        if (prevDeviceId && !deviceId) {
+          init();
+        }
+      }
+    );
+    return unsubscribe;
   }, []);
 
   if (!ready) {

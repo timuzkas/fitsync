@@ -3,8 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { calculateStrengthLoad, calculateCardioLoad, formatLoad, DEFAULT_CONFIG, LoadConfig, RawLoad } from '@/lib/load';
 
 export async function POST(request: Request) {
-  const deviceId = request.headers.get('x-device-id');
-  const deviceSecret = request.headers.get('x-device-secret');
+  const deviceId = String(request.headers.get('x-device-id') || '');
+  const deviceSecret = String(request.headers.get('x-device-secret') || '');
 
   if (!deviceId || !deviceSecret) {
     return NextResponse.json({ error: 'Missing X-Device-Id or X-Device-Secret' }, { status: 401 });
@@ -22,7 +22,12 @@ export async function POST(request: Request) {
     const config = (installation.config as unknown as LoadConfig) || DEFAULT_CONFIG;
 
     const body = await request.json();
-    const { title, startedAt, durationSec, exercises, type, distanceM, avgHr, isPlanned } = body;
+    const title = String(body.title || '');
+    const startedAt = String(body.startedAt || '');
+    const durationSec = Number(body.durationSec) || 0;
+    const type = body.type ? String(body.type) : 'strength';
+    const distanceM = body.distanceM ? Number(body.distanceM) : null;
+    const avgHr = body.avgHr ? Number(body.avgHr) : null;
 
     if (!title || !startedAt || !durationSec) {
       return NextResponse.json({ error: 'Missing required fields: title, startedAt, durationSec' }, { status: 400 });

@@ -81,6 +81,33 @@ export default function SettingsScreen() {
     navigation.navigate('Target', { planConfig: { freeDays } });
   }
 
+  function resetDevice() {
+    Alert.alert(
+      'Reset Device',
+      'This will create a new device ID and disconnect Strava. Your old data will stay on the server. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: async () => {
+          try {
+            await api.Storage.delete('deviceId');
+            await api.Storage.delete('deviceSecret');
+            useDeviceStore.getState().clearCredentials();
+            useDeviceStore.getState().setAthleteProfile(null);
+            const newId = `device-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+            const newSec = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            await api.Storage.set('deviceId', newId);
+            await api.Storage.set('deviceSecret', newSec);
+            await api.registerDevice(newId, newSec);
+            useDeviceStore.getState().setCredentials(newId, newSec);
+            Alert.alert('Done', 'New device registered: ' + newId);
+          } catch (e) {
+            Alert.alert('Error', 'Failed to reset device');
+          }
+        }}
+      ]
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -92,6 +119,19 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+
+        {/* Device ID section */}
+        <Text style={styles.sectionLabel}>DEVICE</Text>
+
+        <View style={styles.rowCard}>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowTitle}>Device ID</Text>
+            <Text style={styles.rowSub} numberOfLines={1}>{deviceId}</Text>
+          </View>
+          <TouchableOpacity onPress={resetDevice}>
+            <Text style={{ color: '#ef4444', fontSize: tokens.font.sm, fontWeight: '600' }}>Reset</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Connections section */}
         <Text style={styles.sectionLabel}>CONNECTIONS</Text>
