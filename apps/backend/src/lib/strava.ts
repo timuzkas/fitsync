@@ -40,7 +40,10 @@ export async function fetchStravaActivities(accessToken: string, after?: number)
     throw new Error(`Failed to fetch Strava activities: ${JSON.stringify(error)}`);
   }
 
-  return response.json();
+  const activities = await response.json();
+  
+  // Strava returns oldest first by default, sort to newest first
+  return activities.sort((a: any, b: any) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
 }
 
 export async function fetchStravaActivityStreams(
