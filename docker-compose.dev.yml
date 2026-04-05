@@ -27,7 +27,7 @@ services:
       DATABASE_URL: postgresql://${DB_USER:-fitsync_user}:${DB_PASSWORD:-fitsync_password}@db:5432/${DB_NAME:-fitsync_db}?schema=public
       NODE_ENV: development
     ports:
-      - "3000:3000"
+      - "3005:3000"
     volumes:
       - .:/app
       - /app/node_modules
@@ -39,8 +39,8 @@ services:
       db:
         condition: service_healthy
     command: >
-      sh -c "npx prisma generate --schema ./packages/prisma/schema.prisma &&
-             npx prisma migrate dev --schema ./packages/prisma/schema.prisma --name init &&
+      sh -c "./node_modules/.bin/prisma generate --schema ./packages/prisma/schema.prisma &&
+             ./node_modules/.bin/prisma migrate dev --schema ./packages/prisma/schema.prisma --name init &&
              npm run dev --workspace=backend"
 
 volumes:
