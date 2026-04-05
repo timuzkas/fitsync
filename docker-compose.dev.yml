@@ -39,7 +39,8 @@ services:
       db:
         condition: service_healthy
     command: >
-      sh -c "npm run generate --workspace=@fitsync/prisma &&
+      sh -c "npm install &&
+             npm run generate --workspace=@fitsync/prisma &&
              npm run dev --workspace=backend -- --webpack"
 
 volumes:
