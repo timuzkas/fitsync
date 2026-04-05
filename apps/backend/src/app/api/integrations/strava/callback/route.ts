@@ -41,16 +41,28 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
+    console.log('Strava token response:', JSON.stringify(data));
     const { access_token, refresh_token, expires_at } = data;
 
+    if (!access_token || !refresh_token) {
+      throw new Error('Missing tokens in Strava response');
+    }
+
+    const expiresAt = expires_at ? new Date(expires_at * 1000) : null;
+    console.log('Device state:', state);
+
     // Find the installation by deviceId (which was passed as state)
+    console.log('Looking for installation with deviceId:', state);
     const installation = await prisma.deviceInstallation.findUnique({
       where: { deviceId: state },
     });
 
     if (!installation) {
+      console.error('Installation not found for deviceId:', state);
       return NextResponse.json({ error: 'Device installation not found' }, { status: 404 });
     }
+
+    console.log('Found installation:', installation.id);
 
     // Update or create DataSource
     await prisma.dataSource.upsert({
@@ -82,6 +94,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(appScheme, { status: 302 });
   } catch (error: any) {
     console.error('Strava callback error:', error);
+    console.error('Error stack:', error.stack);
     const appScheme = `fitsync://strava-callback?status=error&message=${encodeURIComponent(error.message || 'Unknown error')}`;
     return NextResponse.redirect(appScheme, { status: 302 });
   }

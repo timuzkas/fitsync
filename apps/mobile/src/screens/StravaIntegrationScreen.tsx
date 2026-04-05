@@ -28,12 +28,15 @@ export default function StravaIntegrationScreen() {
     if (!deviceId || !deviceSecret) return;
     setConnecting(true);
     try {
-      const { url } = await api.connectStrava(deviceId, deviceSecret);
+      const url = await api.connectStrava(deviceId, deviceSecret);
+      console.log('Strava auth URL:', url);
+      if (!url) throw new Error('No URL returned');
       const result = await WebBrowser.openAuthSessionAsync(url, 'fitsync://strava-callback');
       if (result.type === 'success') {
         Alert.alert('Success', 'Strava connected! Your training plan will now adapt to your activities.');
       }
     } catch (e: any) {
+      console.error('Strava connect error:', e);
       Alert.alert('Connection Failed', e.message || 'Check your internet and try again.');
     } finally {
       setConnecting(false);

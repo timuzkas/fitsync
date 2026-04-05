@@ -110,7 +110,12 @@ export const api = {
     const res = await apiFetch(
       `/api/integrations/strava/connect?deviceId=${encodeURIComponent(deviceId)}&deviceSecret=${encodeURIComponent(deviceSecret)}`
     );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to connect Strava');
+    }
     const data = await res.json();
+    if (!data.url) throw new Error('No authorization URL returned');
     return data.url;
   },
 
