@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
-console.log('[CALLBACK] Module loaded');
+console.log('[CALLBACK] Module loaded, prisma imported');
 
 export async function GET(request: NextRequest) {
   console.log('[CALLBACK] Request received');
+  console.log('[CALLBACK] About to execute query...');
   try {
     const searchParams = request.nextUrl.searchParams;
     const code = searchParams.get('code');
@@ -60,15 +61,18 @@ export async function GET(request: NextRequest) {
     // Find the installation by deviceId (which was passed as state)
     console.log('Looking for installation with deviceId:', state);
     console.log('Querying prisma at', new Date().toISOString());
+    
     let installation;
+    console.log('About to call findUnique...');
     try {
       installation = await prisma.deviceInstallation.findUnique({
         where: { deviceId: state },
       });
-      console.log('Query completed at', new Date().toISOString(), 'result:', installation);
-    } catch (e) {
-      console.error('Prisma query error:', e);
-      throw e;
+      console.log('Query completed successfully, result:', installation);
+    } catch (e: any) {
+      console.error('ERROR in findUnique:', e.message);
+      console.error('ERROR stack:', e.stack);
+      throw new Error(`DB query failed: ${e.message}`);
     }
 
     if (!installation) {
