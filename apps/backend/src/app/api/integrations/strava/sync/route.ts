@@ -75,6 +75,7 @@ function parseHevyLog(description: string) {
 
 export async function POST(request: NextRequest) {
   const deviceId = request.headers.get('x-device-id');
+  const force = request.nextUrl.searchParams.get('force') === 'true';
   if (!deviceId) return NextResponse.json({ error: 'Missing X-Device-Id' }, { status: 400 });
 
   try {
@@ -127,9 +128,10 @@ export async function POST(request: NextRequest) {
 
       // If already imported, we can skip detailed fetch to save time and rate limits
       // We only re-sync if the activity is very recent (e.g., last 24h) to catch description updates
+      // If force=true, always re-sync
       const isRecent = new Date(summaryActivity.start_date).getTime() > Date.now() - 24 * 60 * 60 * 1000;
       
-      if (existing && !isRecent) {
+      if (existing && !isRecent && !force) {
         return { status: 'skipped' };
       }
       

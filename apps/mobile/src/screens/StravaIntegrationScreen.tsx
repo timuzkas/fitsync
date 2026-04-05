@@ -76,6 +76,31 @@ export default function StravaIntegrationScreen() {
 
   const isConnected = !!athleteProfile;
 
+  async function forceSync() {
+    if (!deviceId || !deviceSecret) return;
+    Alert.alert(
+      'Force Sync',
+      'This will re-fetch your latest 30 activities from Strava. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sync',
+          onPress: async () => {
+            setSyncing(true);
+            try {
+              await api.syncStrava(deviceId, deviceSecret, true);
+              Alert.alert('Success', 'Activities synced!');
+            } catch (e: any) {
+              Alert.alert('Sync Failed', e.message);
+            } finally {
+              setSyncing(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -140,6 +165,10 @@ export default function StravaIntegrationScreen() {
               <Text style={styles.syncBtnText}>
                 {syncing ? 'Synchronizing...' : 'Refresh from Strava'}
               </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.syncBtn, styles.forceSyncBtn]} onPress={forceSync} disabled={syncing}>
+              <Text style={styles.forceSyncText}>Force Re-sync Latest 30</Text>
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -350,6 +379,14 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.sm,
     color: tokens.color.primary,
     fontWeight: '600',
+  },
+  forceSyncBtn: {
+    marginTop: tokens.space.sm,
+  },
+  forceSyncText: {
+    fontSize: tokens.font.sm,
+    color: tokens.color.textTertiary,
+    fontWeight: '500',
   },
   infoSection: {
     marginTop: tokens.space.hero,

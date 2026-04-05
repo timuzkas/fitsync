@@ -94,8 +94,9 @@ export const api = {
     return res.json();
   },
 
-  async syncStrava(deviceId: string, deviceSecret: string) {
-    const res = await apiFetch('/api/integrations/strava/sync', {
+  async syncStrava(deviceId: string, deviceSecret: string, force = false) {
+    const url = force ? '/api/integrations/strava/sync?force=true' : '/api/integrations/strava/sync';
+    const res = await apiFetch(url, {
       method: 'POST',
       headers: headers(deviceId, deviceSecret),
     }, 30000);
