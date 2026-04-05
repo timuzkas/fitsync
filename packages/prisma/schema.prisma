@@ -67,6 +67,8 @@ model Workout {
   sufferScore          Float?
   title                String?
   notes                String?
+  rpe                  Int?      // Rate of Perceived Exertion (1-10)
+  vdotAtTime           Float?    // VDOT score at time of workout
   isPlanned            Boolean            @default(false)
   isManual             Boolean            @default(false)
   dedupeHash           String?            // To prevent duplicates across sources
