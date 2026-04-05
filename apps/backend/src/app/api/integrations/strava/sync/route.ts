@@ -128,19 +128,14 @@ export async function POST(request: NextRequest) {
     const syncTasks = stravaActivities.map(async (summaryActivity: any) => {
       const externalId = `strava-${summaryActivity.id}`;
       const existing = existingMap.get(externalId);
-
-      console.log('[SYNC] Processing:', externalId, 'existing:', !!existing);
-
-      // If already imported, we can skip detailed fetch to save time and rate limits
-      // We only re-sync if the activity is recent (last 7 days) to catch description updates
-      const isRecent = new Date(summaryActivity.start_date).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000;
-      console.log('[SYNC] isRecent:', isRecent, 'date:', summaryActivity.start_date);
       
-      if (existing && !isRecent) {
-        console.log('[SYNC] Skipping (exists, not recent):', externalId);
-        return { status: 'skipped' };
+      // If exists under a different device, we need to create a new record with a different externalId
+      let useExternalId = externalId;
+      if (existing && existing.deviceInstallationId !== installation.id) {
+        useExternalId = `${externalId}-${installation.id.slice(0, 8)}`;
+        console.log('[SYNC] Workout exists under different device, using new ID:', useExternalId);
       }
-      
+
       const workoutType = mapStravaToWorkoutType(summaryActivity.type);
       
       try {
@@ -201,10 +196,10 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        console.log('[SYNC] About to upsert workout:', { externalId, workoutType, title: activity.name });
+        console.log('[SYNC] About to upsert workout:', { externalId: useExternalId, workoutType, title: activity.name });
 
         const workout = await prisma.workout.upsert({
-          where: { externalId },
+          where: { externalId: useExternalId },
           update: {
             title: activity.name,
             durationSec: activity.elapsed_time,
@@ -218,7 +213,7 @@ export async function POST(request: NextRequest) {
           create: {
             deviceInstallationId: installation.id,
             source: 'strava',
-            externalId,
+            externalId: useExternalId,
             type: workoutType,
             title: activity.name,
             durationSec: activity.elapsed_time,
