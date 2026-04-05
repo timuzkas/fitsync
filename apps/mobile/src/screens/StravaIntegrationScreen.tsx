@@ -31,9 +31,20 @@ export default function StravaIntegrationScreen() {
       const url = await api.connectStrava(deviceId, deviceSecret);
       console.log('Strava auth URL:', url);
       if (!url) throw new Error('No URL returned');
-      const result = await WebBrowser.openAuthSessionAsync(url, 'fitsync://strava-callback');
-      if (result.type === 'success') {
-        Alert.alert('Success', 'Strava connected! Your training plan will now adapt to your activities.');
+      
+      // Open browser for auth
+      await WebBrowser.openAuthSessionAsync(url, 'fitsync://');
+      await WebBrowser.dismissBrowser();
+      
+      // Wait a moment for callback to process
+      await new Promise(r => setTimeout(r, 1000));
+      
+      // Check if connected now
+      try {
+        await syncProfile();
+        Alert.alert('Success', 'Strava connected!');
+      } catch (e) {
+        Alert.alert('Check Strava', 'Please try connecting again if not successful.');
       }
     } catch (e: any) {
       console.error('Strava connect error:', e);
