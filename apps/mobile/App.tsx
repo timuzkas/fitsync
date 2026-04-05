@@ -114,13 +114,13 @@ function HomeScreen({ navigation }: any) {
             style={styles.headerBtn}
             onPress={() => navigation.navigate('Plan')}
           >
-            <Text style={styles.headerBtnText}>🏃</Text>
+            <Text style={styles.headerBtnText}>🎯</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBtn}
             onPress={() => navigation.navigate('AddWorkout')}
           >
-            <Text style={styles.headerBtnText}>+</Text>
+            <Text style={[styles.headerBtnText, styles.addBtnText]}>+</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBtn}
@@ -255,6 +255,9 @@ const styles = StyleSheet.create({
   },
   headerBtnText: {
     fontSize: tokens.font.md,
+  },
+  addBtnText: {
+    color: '#fff',
   },
   content: {
     flex: 1,

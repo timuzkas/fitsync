@@ -7,23 +7,25 @@ interface LoadBarProps {
   current: number;
   max?: number;
   unit?: string;
+  color?: string;
 }
 
-export function LoadBar({ label, current, max = 100, unit }: LoadBarProps) {
+export function LoadBar({ label, current, max = 100, color }: LoadBarProps) {
   const pct = Math.min((current / max) * 100, 100);
-  const barColor =
+  const barColor = color || (
     pct > 85 ? tokens.color.danger :
     pct > 60 ? tokens.color.warning :
-    tokens.color.primary;
+    tokens.color.primary
+  );
 
   return (
     <View style={styles.container}>
       <Text style={styles.bullet}>▸</Text>
       <Text style={styles.label}>{label}</Text>
       <View style={styles.track}>
-        <View style={[styles.fill, { width: `${pct}%`, backgroundColor: barColor }]} />
+        <View style={[styles.fill, { width: `${Math.max(pct, 2)}%`, backgroundColor: barColor }]} />
       </View>
-      <Text style={styles.value}>
+      <Text style={[styles.value, { color: barColor }]}>
         {Math.round(current)}
       </Text>
     </View>
@@ -34,34 +36,33 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 5,
     gap: tokens.space.sm,
   },
   bullet: {
-    color: tokens.color.primary,
-    fontSize: 14,
+    color: tokens.color.textTertiary,
+    fontSize: 10,
   },
   label: {
     color: tokens.color.textSecondary,
-    fontSize: tokens.font.sm,
-    width: 60,
+    fontSize: tokens.font.xs,
+    width: 44,
   },
   track: {
     flex: 1,
-    height: 6,
-    backgroundColor: tokens.color.border,
-    borderRadius: 3,
+    height: 4,
+    backgroundColor: tokens.color.elevated,
+    borderRadius: 2,
     overflow: 'hidden',
   },
   fill: {
     height: '100%',
-    borderRadius: 3,
+    borderRadius: 2,
   },
   value: {
-    color: tokens.color.textPrimary,
-    fontSize: tokens.font.sm,
-    fontWeight: '600',
-    width: 30,
+    fontSize: tokens.font.xs,
+    fontWeight: '700',
+    width: 24,
     textAlign: 'right',
   },
 });

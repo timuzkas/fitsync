@@ -113,6 +113,7 @@ export const generateSmartPlan = (
       const dateObj = new Date(dp.date);
       return {
         ...dp,
+        date: dp.date,
         dayNum,
         dayOfWeek: dateObj.toLocaleDateString('en-US', { weekday: 'short' }),
         vdotZone: dp.zone || 'E',

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
 import { useNavigation } from '@react-navigation/native';
 import { tokens } from '../tokens';
 import { useDeviceStore } from '../store/useDeviceStore';
@@ -20,13 +19,13 @@ export interface AthleteProfile {
 }
 
 const DAYS = [
-  { id: 'mon', label: 'Mon' },
-  { id: 'tue', label: 'Tue' },
-  { id: 'wed', label: 'Wed' },
-  { id: 'thu', label: 'Thu' },
-  { id: 'fri', label: 'Fri' },
-  { id: 'sat', label: 'Sat' },
-  { id: 'sun', label: 'Sun' },
+  { id: 'mon', label: 'Mo' },
+  { id: 'tue', label: 'Tu' },
+  { id: 'wed', label: 'We' },
+  { id: 'thu', label: 'Th' },
+  { id: 'fri', label: 'Fr' },
+  { id: 'sat', label: 'Sa' },
+  { id: 'sun', label: 'Su' },
 ];
 
 export default function SettingsScreen() {
@@ -34,58 +33,20 @@ export default function SettingsScreen() {
   const { deviceId, deviceSecret, athleteProfile, setAthleteProfile } = useDeviceStore();
 
   const [freeDays, setFreeDays] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-
-  async function connectStrava() {
-    if (!deviceId || !deviceSecret) return;
-    setConnecting(true);
-    try {
-      const { url } = await api.connectStrava(deviceId, deviceSecret);
-      const result = await WebBrowser.openAuthSessionAsync(url, 'fitsync://strava-callback');
-      if (result.type === 'success') {
-        Alert.alert('Success', 'Strava connected! You can now sync your activities.');
-      }
-    } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to connect Strava');
-    } finally {
-      setConnecting(false);
-    }
-  }
-
-  async function fetchStravaProfile() {
-    if (!deviceId || !deviceSecret) return;
-    setLoading(true);
-    try {
-      const athlete = await api.getStravaAthlete(deviceId, deviceSecret);
-      const profile: AthleteProfile = {
-        height: athlete.height,
-        weight: athlete.weight,
-        sex: athlete.sex,
-        maxHR: athlete.max_heartrate,
-        city: athlete.city,
-        country: athlete.country,
-      };
-      setAthleteProfile(profile);
-      Alert.alert('Success', 'Profile fetched from Strava!');
-    } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to fetch profile');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function toggleDay(dayId: string) {
-    setFreeDays(prev => 
-      prev.includes(dayId) 
+    setFreeDays(prev =>
+      prev.includes(dayId)
         ? prev.filter(d => d !== dayId)
-        : [...prev, dayId].sort((a, b) => DAYS.findIndex(d => d.id === a) - DAYS.findIndex(d => d.id === b))
+        : [...prev, dayId].sort((a, b) =>
+            DAYS.findIndex(d => d.id === a) - DAYS.findIndex(d => d.id === b)
+          )
     );
   }
 
   function savePlanSettings() {
     if (freeDays.length === 0) {
-      Alert.alert('Error', 'Select at least one day to run');
+      Alert.alert('Select Training Days', 'Pick at least one day you can run.');
       return;
     }
     navigation.navigate('Target', { planConfig: { freeDays } });
@@ -94,72 +55,83 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.back}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
-        <View style={{ width: 30 }} />
+        <View style={{ width: 36 }} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionTitle}>Connections</Text>
-        <TouchableOpacity 
-          style={styles.card} 
+
+        {/* Connections section */}
+        <Text style={styles.sectionLabel}>CONNECTIONS</Text>
+
+        <TouchableOpacity
+          style={styles.rowCard}
           onPress={() => navigation.navigate('StravaIntegration')}
+          activeOpacity={0.7}
         >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardTitleRow}>
-              <View style={[styles.cardIcon, { backgroundColor: '#FC4C02' }]}>
-                <Text style={styles.cardIconText}>S</Text>
-              </View>
-              <View>
-                <Text style={styles.cardTitle}>Strava Integration</Text>
-                <Text style={styles.cardSub}>Status: {athleteProfile ? 'Active' : 'Not Connected'}</Text>
-              </View>
-            </View>
-            <Text style={styles.cardArrow}>→</Text>
+          <View style={[styles.rowIcon, { backgroundColor: '#FC4C02' }]}>
+            <Text style={styles.rowIconText}>S</Text>
           </View>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowTitle}>Strava Integration</Text>
+            <Text style={[styles.rowSub, {
+              color: athleteProfile ? tokens.color.success : tokens.color.textMuted
+            }]}>
+              {athleteProfile ? '● Active' : '○ Not connected'}
+            </Text>
+          </View>
+          <Text style={styles.rowArrow}>›</Text>
         </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>Algorithm & Analytics</Text>
-        <TouchableOpacity 
-          style={styles.card} 
+        {/* Algorithm section */}
+        <Text style={styles.sectionLabel}>ALGORITHM</Text>
+
+        <TouchableOpacity
+          style={styles.rowCard}
           onPress={() => navigation.navigate('TrainingEngine')}
+          activeOpacity={0.7}
         >
-          <View style={styles.cardHeader}>
-            <View style={styles.cardTitleRow}>
-              <View style={[styles.cardIcon, { backgroundColor: tokens.color.primary }]}>
-                <Text style={styles.cardIconText}>⚙️</Text>
-              </View>
-              <View>
-                <Text style={styles.cardTitle}>The Training Engine</Text>
-                <Text style={styles.cardSub}>Tune VDOT, ACWR, and Foster Weights</Text>
-              </View>
-            </View>
-            <Text style={styles.cardArrow}>→</Text>
+          <View style={[styles.rowIcon, { backgroundColor: tokens.color.primary }]}>
+            <Text style={styles.rowIconText}>⚙</Text>
           </View>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowTitle}>The Training Engine</Text>
+            <Text style={styles.rowSub}>Tune VDOT, ACWR, and Foster Weights</Text>
+          </View>
+          <Text style={styles.rowArrow}>›</Text>
         </TouchableOpacity>
 
-        <Text style={styles.sectionTitle}>Plan Settings</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardDesc}>
-            Select which days you can run. The planner will assign sessions to these days.
+        {/* Plan settings */}
+        <Text style={styles.sectionLabel}>TRAINING SCHEDULE</Text>
+
+        <View style={styles.planCard}>
+          <Text style={styles.planDesc}>
+            Select which days you can train. The planner will assign sessions to these days.
           </Text>
-          <View style={styles.daysGrid}>
-            {DAYS.map(day => (
-              <TouchableOpacity
-                key={day.id}
-                style={[styles.dayBtn, freeDays.includes(day.id) && styles.dayBtnActive]}
-                onPress={() => toggleDay(day.id)}
-              >
-                <Text style={[styles.dayBtnText, freeDays.includes(day.id) && styles.dayBtnTextActive]}>
-                  {day.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+
+          <View style={styles.daysRow}>
+            {DAYS.map(day => {
+              const active = freeDays.includes(day.id);
+              return (
+                <TouchableOpacity
+                  key={day.id}
+                  style={[styles.dayBtn, active && styles.dayBtnActive]}
+                  onPress={() => toggleDay(day.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.dayBtnText, active && styles.dayBtnTextActive]}>
+                    {day.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
+
           {freeDays.length > 0 && (
-            <Text style={styles.daysSelected}>
+            <Text style={styles.daysHint}>
               {freeDays.length} day{freeDays.length !== 1 ? 's' : ''} selected
             </Text>
           )}
@@ -169,8 +141,12 @@ export default function SettingsScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.continueBtn} onPress={savePlanSettings}>
-          <Text style={styles.continueBtnText}>Continue to Target</Text>
+        <TouchableOpacity
+          style={[styles.continueBtn, freeDays.length === 0 && styles.continueBtnDim]}
+          onPress={savePlanSettings}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.continueBtnText}>Continue to Target →</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -178,88 +154,157 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: tokens.color.bg },
+  container: {
+    flex: 1,
+    backgroundColor: tokens.color.bg,
+  },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: tokens.space.md, paddingTop: 60, paddingBottom: tokens.space.md,
-  },
-  back: { fontSize: 24, color: tokens.color.textMuted },
-  headerTitle: { fontSize: tokens.font.lg, fontWeight: '600', color: tokens.color.textPrimary },
-  content: { flex: 1, paddingHorizontal: tokens.space.md },
-  sectionTitle: {
-    fontSize: tokens.font.sm, fontWeight: '600', color: tokens.color.textMuted,
-    textTransform: 'uppercase', letterSpacing: 1, marginTop: tokens.space.lg, marginBottom: tokens.space.sm,
-  },
-  card: {
-    backgroundColor: tokens.color.surfaceElevated, borderRadius: tokens.radius.md,
-    padding: tokens.space.md, borderWidth: 1, borderColor: tokens.color.border,
-    marginBottom: tokens.space.md,
-  },
-  cardHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    paddingHorizontal: tokens.space.md,
+    paddingTop: 60,
+    paddingBottom: tokens.space.md,
   },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.space.md,
-  },
-  cardIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: tokens.radius.sm,
+  backBtn: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardIconText: {
-    color: '#fff',
-    fontSize: tokens.font.sm,
+  back: {
+    fontSize: 22,
+    color: tokens.color.textSecondary,
+  },
+  headerTitle: {
+    fontSize: tokens.font.lg,
+    fontWeight: '700',
+    color: tokens.color.textPrimary,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: tokens.space.md,
+  },
+
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: tokens.color.textTertiary,
+    letterSpacing: 2,
+    marginTop: tokens.space.lg,
+    marginBottom: tokens.space.sm,
+    marginLeft: 2,
+  },
+
+  rowCard: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: tokens.space.md,
+    gap: tokens.space.md,
+    marginBottom: tokens.space.sm,
+  },
+  rowIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: tokens.radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  rowIconText: {
+    color: '#ffffff',
+    fontSize: 15,
     fontWeight: '800',
   },
-  cardTitle: {
+  rowBody: {
+    flex: 1,
+  },
+  rowTitle: {
     fontSize: tokens.font.md,
     fontWeight: '600',
     color: tokens.color.textPrimary,
   },
-  cardSub: {
+  rowSub: {
     fontSize: tokens.font.xs,
-    color: tokens.color.textSecondary,
+    color: tokens.color.textMuted,
     marginTop: 2,
   },
-  cardArrow: {
-    fontSize: tokens.font.lg,
+  rowArrow: {
+    fontSize: 22,
     color: tokens.color.textTertiary,
+    fontWeight: '300',
   },
-  cardDesc: { fontSize: tokens.font.sm, color: tokens.color.textSecondary, marginBottom: tokens.space.md },
-  btn: {
-    backgroundColor: tokens.color.primary, borderRadius: tokens.radius.sm,
-    padding: tokens.space.md, alignItems: 'center',
+
+  planCard: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    padding: tokens.space.md,
   },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: '#fff', fontSize: tokens.font.md, fontWeight: '600' },
-  btnSecondary: {
-    backgroundColor: tokens.color.elevated, borderRadius: tokens.radius.sm,
-    padding: tokens.space.md, alignItems: 'center', borderWidth: 1, borderColor: tokens.color.border,
+  planDesc: {
+    fontSize: tokens.font.sm,
+    color: tokens.color.textSecondary,
+    lineHeight: 20,
+    marginBottom: tokens.space.md,
   },
-  btnSecondaryText: { color: tokens.color.textPrimary, fontSize: tokens.font.md },
-  profilePreview: { marginTop: tokens.space.md, paddingTop: tokens.space.md, borderTopWidth: 1, borderTopColor: tokens.color.border },
-  profileRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
-  profileLabel: { fontSize: tokens.font.sm, color: tokens.color.textMuted },
-  profileValue: { fontSize: tokens.font.sm, color: tokens.color.textPrimary },
-  daysGrid: { flexDirection: 'row', gap: tokens.space.sm, flexWrap: 'wrap' },
+  daysRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
   dayBtn: {
-    width: 48, height: 48, borderRadius: 24, backgroundColor: tokens.color.surfaceElevated,
-    alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: tokens.color.border,
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: tokens.radius.full,
+    backgroundColor: tokens.color.elevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: tokens.color.border,
+    maxWidth: 44,
   },
-  dayBtnActive: { borderColor: tokens.color.primary, backgroundColor: tokens.color.primaryMuted },
-  dayBtnText: { fontSize: tokens.font.sm, fontWeight: '600', color: tokens.color.textSecondary },
-  dayBtnTextActive: { color: tokens.color.textPrimary },
-  daysSelected: { fontSize: tokens.font.sm, color: tokens.color.primary, marginTop: tokens.space.sm },
-  footer: { padding: tokens.space.md, paddingBottom: tokens.space.xl },
+  dayBtnActive: {
+    backgroundColor: tokens.color.primaryMuted,
+    borderColor: tokens.color.primary,
+  },
+  dayBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: tokens.color.textMuted,
+  },
+  dayBtnTextActive: {
+    color: tokens.color.primary,
+  },
+  daysHint: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.primary,
+    marginTop: tokens.space.sm,
+    fontWeight: '600',
+  },
+
+  footer: {
+    padding: tokens.space.md,
+    paddingBottom: tokens.space.xl,
+    borderTopWidth: 1,
+    borderTopColor: tokens.color.border,
+  },
   continueBtn: {
-    backgroundColor: tokens.color.primary, borderRadius: tokens.radius.sm,
-    padding: tokens.space.md, alignItems: 'center',
+    backgroundColor: tokens.color.primary,
+    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.space.md,
+    alignItems: 'center',
   },
-  continueBtnText: { color: '#fff', fontSize: tokens.font.lg, fontWeight: 'bold' },
+  continueBtnDim: {
+    opacity: 0.45,
+  },
+  continueBtnText: {
+    color: '#ffffff',
+    fontSize: tokens.font.md,
+    fontWeight: '700',
+  },
 });

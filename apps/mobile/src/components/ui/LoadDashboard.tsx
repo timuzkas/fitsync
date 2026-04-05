@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LoadBar } from '../ui/LoadBar';
@@ -15,120 +14,202 @@ interface LoadDashboardProps {
 }
 
 export function LoadDashboard({ readiness, current, load7d, load28d, history7d }: LoadDashboardProps) {
+  const readinessLabel =
+    readiness > 70 ? 'Ready to train' :
+    readiness > 40 ? 'Light session only' :
+    'Rest recommended';
+
+  const readinessColor =
+    readiness > 70 ? tokens.color.success :
+    readiness > 40 ? tokens.color.warning :
+    tokens.color.danger;
+
   return (
     <View style={styles.container}>
+
+      {/* ── Hero: ring + load numbers ── */}
       <View style={styles.heroRow}>
-        <MetricRing value={readiness} label="Readiness" size={140} strokeWidth={16} />
-        
-        <View style={styles.summaryStats}>
-          <View style={styles.summaryStat}>
-            <Text style={styles.summaryLabel}>WEEKLY LOAD</Text>
-            <Text style={styles.summaryValue}>{Math.round(load7d)}</Text>
+        {/* Ring — explicit size so it never stretches */}
+        <View style={styles.ringWrap}>
+          <MetricRing value={readiness} label="Readiness" size={138} strokeWidth={16} />
+        </View>
+
+        {/* Load stats */}
+        <View style={styles.statsCol}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>WEEKLY LOAD</Text>
+            <View style={styles.statValueRow}>
+              <View style={[styles.accent, { backgroundColor: tokens.color.primary }]} />
+              <Text style={styles.statNum}>{Math.round(load7d)}</Text>
+            </View>
           </View>
-          <View style={[styles.summaryStat, { borderLeftColor: tokens.color.accent }]}>
-            <Text style={styles.summaryLabel}>MONTHLY LOAD</Text>
-            <Text style={styles.summaryValue}>{Math.round(load28d)}</Text>
+
+          <View style={styles.separator} />
+
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>MONTHLY LOAD</Text>
+            <View style={styles.statValueRow}>
+              <View style={[styles.accent, { backgroundColor: tokens.color.warning }]} />
+              <Text style={styles.statNum}>{Math.round(load28d)}</Text>
+            </View>
           </View>
         </View>
       </View>
 
+      {/* ── Status pill ── */}
+      <View style={styles.statusRow}>
+        <View style={[styles.statusDot, { backgroundColor: readinessColor }]} />
+        <Text style={[styles.statusText, { color: readinessColor }]}>{readinessLabel}</Text>
+      </View>
+
+      {/* ── Bottom grid: sparkline | system stress ── */}
       <View style={styles.grid}>
-        <View style={styles.column}>
-          <Text style={styles.sectionTitle}>LOAD TREND (7D)</Text>
-          <View style={styles.sparklineCard}>
-            {history7d && history7d.length > 0 ? (
-              <LoadSparkline data={history7d} color={tokens.color.primary} />
+        <View style={styles.gridCard}>
+          <Text style={styles.cardLabel}>LOAD TREND</Text>
+          <View style={styles.sparklineArea}>
+            {history7d && history7d.length > 1 ? (
+              <LoadSparkline data={history7d} color={tokens.color.primary} height={44} />
             ) : (
-              <Text style={styles.emptyText}>No recent data</Text>
+              <Text style={styles.emptyText}>No data yet</Text>
             )}
           </View>
+          <Text style={styles.cardSub}>7-day history</Text>
         </View>
 
-        <View style={styles.column}>
-          <Text style={styles.sectionTitle}>SYSTEM STRESS</Text>
-          <View style={styles.stressCard}>
+        <View style={styles.gridCard}>
+          <Text style={styles.cardLabel}>SYSTEM STRESS</Text>
+          <View style={styles.barsArea}>
             <LoadBar label="Cardio" current={current.cardio} max={100} color={tokens.color.primary} />
-            <LoadBar label="Legs" current={current.legs} max={100} color={tokens.color.success} />
-            <LoadBar label="Upper" current={current.upper} max={100} color={tokens.color.warning} />
-            <LoadBar label="Core" current={current.core} max={100} color={tokens.color.accent} />
+            <LoadBar label="Legs"   current={current.legs}   max={100} color={tokens.color.success} />
+            <LoadBar label="Upper"  current={current.upper}  max={100} color={tokens.color.warning} />
+            <LoadBar label="Core"   current={current.core}   max={100} color={tokens.color.accent}  />
           </View>
         </View>
       </View>
+
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: tokens.space.lg,
+    marginBottom: tokens.space.md,
   },
+
+  /* Hero row */
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.space.xl,
-    paddingVertical: tokens.space.md,
-  },
-  summaryStats: {
-    flex: 1,
     gap: tokens.space.lg,
+    paddingVertical: tokens.space.xs,
   },
-  summaryStat: {
-    borderLeftWidth: 3,
-    borderLeftColor: tokens.color.primary,
-    paddingLeft: tokens.space.md,
-    paddingVertical: 2,
+  ringWrap: {
+    // Hard-size the ring so it cannot stretch the row
+    width: 138,
+    height: 138,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  summaryLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: tokens.color.textSecondary,
-    letterSpacing: 1.5,
-    marginBottom: 2,
-  },
-  summaryValue: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: tokens.color.textPrimary,
-  },
-  grid: {
-    flexDirection: 'row',
-    gap: tokens.space.md,
-    marginTop: tokens.space.md,
-  },
-  column: {
+  statsCol: {
     flex: 1,
+    // Match ring height so items distribute evenly
+    height: 138,
+    justifyContent: 'center',
   },
-  sectionTitle: {
+  statItem: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  statLabel: {
     fontSize: 9,
     fontWeight: '800',
     color: tokens.color.textTertiary,
-    letterSpacing: 1.2,
-    marginBottom: tokens.space.sm,
-    marginLeft: 2,
+    letterSpacing: 1.8,
+    marginBottom: 2,
   },
-  sparklineCard: {
-    backgroundColor: tokens.color.surfaceElevated,
-    borderRadius: tokens.radius.lg,
-    padding: tokens.space.md,
+  statValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  accent: {
+    width: 3,
+    height: 22,
+    borderRadius: 2,
+  },
+  statNum: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: tokens.color.textPrimary,
+    letterSpacing: -1,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: tokens.color.border,
+    marginVertical: 2,
+  },
+
+  /* Status */
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+    marginBottom: tokens.space.md,
+    paddingLeft: 2,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: tokens.font.xs,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+
+  /* Bottom grid */
+  grid: {
+    flexDirection: 'row',
+    gap: tokens.space.sm,
+  },
+  gridCard: {
+    flex: 1,
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
     borderWidth: 1,
     borderColor: tokens.color.border,
-    height: 90,
+    padding: tokens.space.md,
+    // Fixed height so both cards match
+    height: 120,
+  },
+  cardLabel: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: tokens.color.textTertiary,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  sparklineArea: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  stressCard: {
-    backgroundColor: tokens.color.surfaceElevated,
-    borderRadius: tokens.radius.lg,
-    padding: tokens.space.md,
-    borderWidth: 1,
-    borderColor: tokens.color.border,
-    height: 90,
-    justifyContent: 'center',
-    gap: 4,
+  barsArea: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  cardSub: {
+    fontSize: 8,
+    color: tokens.color.textTertiary,
+    textAlign: 'center',
+    marginTop: 2,
   },
   emptyText: {
     fontSize: 10,
     color: tokens.color.textTertiary,
-    textAlign: 'center',
     fontStyle: 'italic',
   },
 });

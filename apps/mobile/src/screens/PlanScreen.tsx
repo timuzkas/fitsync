@@ -123,9 +123,9 @@ export default function PlanScreen() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const formatDate = (dateStr: string) => {
-    const datePart = dateStr.split('-w')[0];
-    const d = new Date(datePart);
+  const formatDate = (dateVal: string | Date | undefined) => {
+    if (!dateVal) return 'Unknown';
+    const d = typeof dateVal === 'string' ? new Date(dateVal.split('-w')[0]) : new Date(dateVal);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
