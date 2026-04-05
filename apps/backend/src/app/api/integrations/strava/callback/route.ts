@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient({
-  log: ['query', 'error'],
-});
+import { prisma } from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
   console.log('=== Strava callback START ===');
@@ -61,9 +57,17 @@ export async function GET(request: NextRequest) {
 
     // Find the installation by deviceId (which was passed as state)
     console.log('Looking for installation with deviceId:', state);
-    const installation = await prisma.deviceInstallation.findUnique({
-      where: { deviceId: state },
-    });
+    console.log('Querying prisma at', new Date().toISOString());
+    let installation;
+    try {
+      installation = await prisma.deviceInstallation.findUnique({
+        where: { deviceId: state },
+      });
+      console.log('Query completed at', new Date().toISOString(), 'result:', installation);
+    } catch (e) {
+      console.error('Prisma query error:', e);
+      throw e;
+    }
 
     if (!installation) {
       console.error('Installation not found for deviceId:', state);
