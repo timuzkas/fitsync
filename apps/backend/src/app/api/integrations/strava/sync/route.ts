@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
     const externalIds = stravaActivities.map((a: any) => `strava-${a.id}`);
     const existingWorkouts = await prisma.workout.findMany({
       where: { externalId: { in: externalIds } },
-      select: { externalId: true, updatedAt: true }
+      select: { externalId: true, deviceInstallationId: true }
     });
     const existingMap = new Map(existingWorkouts.map(w => [w.externalId, w]));
 
@@ -129,7 +129,12 @@ export async function POST(request: NextRequest) {
       const externalId = `strava-${summaryActivity.id}`;
       const existing = existingMap.get(externalId);
       
-      // If exists under a different device, we need to create a new record with a different externalId
+      // Skip if already synced under this device
+      if (existing && existing.deviceInstallationId === installation.id) {
+        return { status: 'skipped' };
+      }
+      
+      // If exists under a different device, create a new record with a unique externalId
       let useExternalId = externalId;
       if (existing && existing.deviceInstallationId !== installation.id) {
         useExternalId = `${externalId}-${installation.id.slice(0, 8)}`;
