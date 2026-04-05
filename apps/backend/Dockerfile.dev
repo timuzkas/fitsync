@@ -1,6 +1,6 @@
-FROM node:20-alpine
+FROM node:20
 
-RUN apk add --no-cache libc6-compat openssl libssl
+RUN apk add --no-cache libc6-compat openssl libssl glibc
 
 WORKDIR /app
 
