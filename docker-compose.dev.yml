@@ -39,8 +39,8 @@ services:
       db:
         condition: service_healthy
     command: >
-      sh -c "./node_modules/.bin/prisma generate --schema ./packages/prisma/schema.prisma &&
-             ./node_modules/.bin/prisma migrate dev --schema ./packages/prisma/schema.prisma --name init &&
+      sh -c "npm run generate --workspace=@fitsync/prisma &&
+             npm run db:push --workspace=@fitsync/prisma &&
              npm run dev --workspace=backend"
 
 volumes:
