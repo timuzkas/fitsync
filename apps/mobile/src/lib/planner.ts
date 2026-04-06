@@ -89,7 +89,7 @@ function analyzeHistory(activities: Activity[], athlete: Athlete) {
     const hrReserve = (a.hrAvg - athlete.restHR) / (athlete.maxHR - athlete.restHR || 1);
     const intensity = 0.64 * Math.exp(1.92 * (hrReserve || 0));
     const durationMin = a.duration / 60;
-    const elevFactor = 1 + (a.elevationGain / 1000); 
+    const elevFactor = 1 + (a.elevationGain / 1000) * 0.05; 
     return durationMin * intensity * elevFactor;
   });
 

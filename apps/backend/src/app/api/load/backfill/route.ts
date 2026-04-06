@@ -51,7 +51,7 @@ export async function POST(request: Request) {
         });
         updated++;
       } else {
-        const load = calculateCardioLoad(workout.type, workout.durationSec, workout.avgHr, workout.maxHr, workout.distanceM, config.multipliers.cardio);
+        const load = calculateCardioLoad(workout.type, workout.durationSec, workout.avgHr, workout.maxHr, workout.distanceM, workout.elevationGainM || 0, config.multipliers.cardio);
         const formatted = formatLoad({ cardio: load, legs: 0, upper: 0, core: 0, systemic: 0 });
         await prisma.loadScore.upsert({
           where: { workoutId: workout.id },

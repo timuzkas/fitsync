@@ -135,6 +135,7 @@ export default function AddWorkoutScreen() {
         exercises: validExs,
         isPlanned: sessionPurpose !== 'training',
         sessionPurpose: sessionPurpose !== 'training' ? sessionPurpose : undefined,
+        targetTimeSec: entryMode === 'plan' ? (parseInt(targetHours || '0') * 3600 + parseInt(targetMinutes || '0') * 60 + parseInt(targetSeconds || '0')) : undefined,
       });
       Alert.alert('Saved!', 'Workout added', [{ text: 'OK', onPress: () => navigation.goBack() }]);
     } catch (e: any) {

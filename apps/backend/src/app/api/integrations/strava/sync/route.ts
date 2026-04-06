@@ -95,7 +95,25 @@ export async function POST(request: NextRequest) {
         
         let loadCalc;
         let sourceDetail: any = null;
-        let rpe = suggestRpeFromHrZone(200, activity.average_heartrate || 120); // Fallback maxHr=200
+        
+        // Default RPE by activity type per spec 4.1
+        let rpe: number;
+        if (workoutType === 'walk') {
+          rpe = 1; // Walking always fixed at 1
+        } else if (workoutType === 'strength' || workoutType === 'other') {
+          rpe = 5; // Gym/calisthenics/HIIT default 5
+        } else if (workoutType === 'ride') {
+          rpe = 5; // Cycling default 5
+        } else if (activity.average_heartrate && activity.max_heartrate) {
+          // Running with HR data - use HR zone based suggestion
+          rpe = suggestRpeFromHrZone(activity.max_heartrate, activity.average_heartrate);
+        } else if (activity.average_heartrate) {
+          // Has avg HR but not max - use 200 as fallback
+          rpe = suggestRpeFromHrZone(200, activity.average_heartrate);
+        } else {
+          // No HR data - default based on activity type
+          rpe = workoutType === 'run' ? 5 : 5;
+        }
         let hevyResult = null;
 
         if (workoutType === 'strength') {
@@ -130,6 +148,7 @@ export async function POST(request: NextRequest) {
             activity.average_heartrate,
             activity.max_heartrate,
             activity.distance,
+            activity.total_elevation_gain || 0,
             config.multipliers?.cardio || 1
           );
           loadCalc = formatLoad({ 
@@ -160,6 +179,7 @@ export async function POST(request: NextRequest) {
             durationSec: activity.elapsed_time,
             calories: activity.calories,
             avgHr: activity.average_heartrate,
+            elevationGainM: activity.total_elevation_gain,
             startedAt: new Date(activity.start_date),
             distanceM: activity.distance,
             rpe,
@@ -182,6 +202,7 @@ export async function POST(request: NextRequest) {
             durationSec: activity.elapsed_time,
             calories: activity.calories,
             avgHr: activity.average_heartrate,
+            elevationGainM: activity.total_elevation_gain,
             startedAt: new Date(activity.start_date),
             distanceM: activity.distance,
             rpe,

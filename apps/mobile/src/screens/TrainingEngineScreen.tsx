@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Animated
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Animated, Alert
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useNavigation } from '@react-navigation/native';
@@ -15,6 +15,7 @@ interface EngineConfig {
   readinessFormula: 'simple' | 'exponential';
   acwrThreshold: number;
   vdotOverride?: number;
+  baselineLevel?: 'beginner' | 'intermediate' | 'advanced';
 }
 
 const DEFAULT_CONFIG: EngineConfig = {
@@ -23,6 +24,12 @@ const DEFAULT_CONFIG: EngineConfig = {
   weeklyTarget: 400,
   readinessFormula: 'simple',
   acwrThreshold: 1.5,
+};
+
+const BASELINE_VDOT = {
+  beginner: 30,
+  intermediate: 40,
+  advanced: 50,
 };
 
 export default function TrainingEngineScreen() {
@@ -102,6 +109,51 @@ export default function TrainingEngineScreen() {
               maximumTrackTintColor={tokens.color.border}
               thumbTintColor={tokens.color.primary}
             />
+          </View>
+        </View>
+
+        {/* --- FITNESS BASELINE --- */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Fitness Baseline</Text>
+          <View style={styles.glassCard}>
+            <Text style={styles.cardDesc}>
+              Select your fitness level to set an initial VDOT. This will be automatically replaced when you complete a qualifying Strava run (≥3km, RPE ≥7).
+            </Text>
+            
+            <View style={styles.baselineGrid}>
+              {(['beginner', 'intermediate', 'advanced'] as const).map(level => (
+                <TouchableOpacity
+                  key={level}
+                  style={[
+                    styles.baselineCard,
+                    config.baselineLevel === level && styles.baselineCardActive
+                  ]}
+                  onPress={() => {
+                    updateConfig({ 
+                      baselineLevel: level,
+                      vdotOverride: BASELINE_VDOT[level]
+                    });
+                    Alert.alert(
+                      'VDOT Updated', 
+                      `Set to ${BASELINE_VDOT[level]} (${level} level). This will adjust your training zones.`
+                    );
+                  }}
+                >
+                  <Text style={[
+                    styles.baselineLabel,
+                    config.baselineLevel === level && styles.baselineLabelActive
+                  ]}>
+                    {level.charAt(0).toUpperCase() + level.slice(1)}
+                  </Text>
+                  <Text style={styles.baselineVdot}>VDOT {BASELINE_VDOT[level]}</Text>
+                  <Text style={styles.baselineDesc}>
+                    {level === 'beginner' && '>35 min 5K'}
+                    {level === 'intermediate' && '25-35 min 5K'}
+                    {level === 'advanced' && '<25 min 5K'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
 
@@ -294,5 +346,42 @@ const styles = StyleSheet.create({
     color: tokens.color.textTertiary,
     fontWeight: '600',
     textTransform: 'uppercase',
+  },
+  baselineGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: tokens.space.sm,
+  },
+  baselineCard: {
+    flex: 1,
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    padding: tokens.space.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  baselineCardActive: {
+    borderColor: tokens.color.primary,
+    backgroundColor: 'rgba(10, 132, 255, 0.1)',
+  },
+  baselineLabel: {
+    fontSize: tokens.font.sm,
+    fontWeight: '600',
+    color: tokens.color.textSecondary,
+    marginBottom: 4,
+  },
+  baselineLabelActive: {
+    color: tokens.color.primary,
+  },
+  baselineVdot: {
+    fontSize: tokens.font.md,
+    fontWeight: '700',
+    color: tokens.color.textPrimary,
+  },
+  baselineDesc: {
+    fontSize: 10,
+    color: tokens.color.textMuted,
+    marginTop: 2,
   },
 });

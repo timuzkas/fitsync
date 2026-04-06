@@ -154,10 +154,11 @@ export default function PlanScreen() {
     const plannedRaceActivities = futurePlannedRaces.map((r: any) => ({
       date: new Date(r.startedAt),
       distance: (r.distanceM || 0) / 1000,
-      duration: r.durationSec || 0,
+      duration: r.targetTimeSec || r.durationSec || 0,
       hrAvg: r.avgHr || 140,
       isRace: true,
       racePriority: r.sessionPurpose || 'c-race',
+      title: r.title,
     }));
     
     const { dailyPlan: basePlan, weeklyStats } = generateSmartPlan(target, activities, athlete, config, readinessScores, temps, plannedRaceActivities);

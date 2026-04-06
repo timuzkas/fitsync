@@ -30,6 +30,7 @@ export function calculateCardioLoad(
   avgHr?: number | null,
   maxHr?: number | null,
   distanceM?: number | null,
+  elevationGainM: number = 0,
   multiplier = 1.0
 ): number {
   if (!['run', 'ride', 'walk', 'other'].includes(type)) return 0;
@@ -50,7 +51,11 @@ export function calculateCardioLoad(
     load = durationMin * 0.5;
   }
 
-  return Math.round(load * multiplier * 10) / 10;
+  const gradeFactor = type === 'run' 
+    ? 1 + (elevationGainM / 1000) * 0.05 
+    : 1 + (elevationGainM / 1000) * 0.03;
+
+  return Math.round(load * multiplier * gradeFactor * 10) / 10;
 }
 
 const MUSCLE_GROUP_MAP: Record<string, string[]> = {

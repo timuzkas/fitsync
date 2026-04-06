@@ -109,8 +109,24 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { plannedRaceId, linkedWorkoutId } = body;
+    const { plannedRaceId, linkedWorkoutId, rpe } = body;
 
+    // Handle RPE update
+    if (rpe !== undefined && linkedWorkoutId) {
+      const workout = await prisma.workout.findFirst({
+        where: { id: linkedWorkoutId, deviceInstallationId: installation.id },
+      });
+      if (!workout) {
+        return NextResponse.json({ error: 'Workout not found' }, { status: 404 });
+      }
+      const updated = await prisma.workout.update({
+        where: { id: linkedWorkoutId },
+        data: { rpe: Math.max(1, Math.min(10, rpe)) },
+      });
+      return NextResponse.json(updated);
+    }
+
+    // Handle planned race linking
     if (!plannedRaceId || !linkedWorkoutId) {
       return NextResponse.json({ error: 'Missing plannedRaceId or linkedWorkoutId' }, { status: 400 });
     }

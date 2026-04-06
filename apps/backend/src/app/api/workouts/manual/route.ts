@@ -28,8 +28,10 @@ export async function POST(request: Request) {
     const type = body.type ? String(body.type) : 'strength';
     const distanceM = body.distanceM ? Number(body.distanceM) : null;
     const avgHr = body.avgHr ? Number(body.avgHr) : null;
+    const elevationGainM = body.elevationGainM ? Number(body.elevationGainM) : null;
     const isPlanned = !!body.isPlanned;
     const sessionPurpose = body.sessionPurpose ? String(body.sessionPurpose) : null;
+    const targetTimeSec = body.targetTimeSec ? Number(body.targetTimeSec) : null;
     const exercises = body.exercises || [];
 
     if (!title || !startedAt || !durationSec) {
@@ -53,6 +55,7 @@ export async function POST(request: Request) {
         avgHr,
         null, // maxHr
         distanceM,
+        elevationGainM || 0,
         config.multipliers?.cardio
       );
       load = {
@@ -77,9 +80,11 @@ export async function POST(request: Request) {
         durationSec,
         distanceM,
         avgHr,
+        elevationGainM,
         isManual: true,
         isPlanned: !!isPlanned,
         sessionPurpose: isPlanned ? (body.sessionPurpose || 'c-race') : null,
+        targetTimeSec: isPlanned ? targetTimeSec : null,
         exercises: workoutType === 'strength' && exercises && exercises.length > 0 ? {
           create: exercises.map((ex: any) => ({
             name: ex.name,

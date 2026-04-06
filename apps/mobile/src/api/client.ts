@@ -120,6 +120,19 @@ export const api = {
     return res.json();
   },
 
+  async updateWorkoutRpe(deviceId: string, deviceSecret: string, workoutId: string, rpe: number) {
+    const res = await apiFetch('/api/workouts', {
+      method: 'PATCH',
+      headers: headers(deviceId, deviceSecret),
+      body: JSON.stringify({ linkedWorkoutId: workoutId, rpe }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Update failed');
+    }
+    return res.json();
+  },
+
   async syncStrava(deviceId: string, deviceSecret: string) {
     const res = await apiFetch('/api/integrations/strava/sync', {
       method: 'POST',

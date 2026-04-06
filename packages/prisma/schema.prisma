@@ -65,7 +65,8 @@ model Workout {
   calories             Float?
   avgHr                Int?
   maxHr                Int?
-  hrZoneTimes          Json?   // { "zone1": 120, "zone2": 300, ... }
+  elevationGainM       Float?    // elevation gain in meters
+  hrZoneTimes          Json?     // { "zone1": 120, "zone2": 300, ... }
   sufferScore          Float?
   title                String?
   notes                String?
@@ -74,6 +75,7 @@ model Workout {
   isPlanned            Boolean            @default(false)
   isManual             Boolean            @default(false)
   sessionPurpose       String?            // "b-race", "c-race", "training"
+  targetTimeSec       Int?               // Target finish time for planned races
   linkedWorkoutId      String?            // Links a planned race to a completed workout
   dedupeHash           String?            // To prevent duplicates across sources
   

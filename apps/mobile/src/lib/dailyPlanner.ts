@@ -97,12 +97,16 @@ export const generateSmartPlan = (
   aRaceDate.setHours(0, 0, 0, 0);
   
   // Build a map of race dates to avoid scheduling hard workouts nearby
-  const raceDates = new Map<string, { distance: number; priority: string }>();
+  const raceDates = new Map<string, { distance: number; priority: string; title: string; durationMin: number }>();
   for (const race of plannedRaces) {
     const raceDate = new Date(race.date || race.startedAt);
-    raceDate.setHours(0, 0, 0, 0);
-    const key = raceDate.toISOString().split('T')[0];
-    raceDates.set(key, { distance: race.distance || 0, priority: race.racePriority || 'c-race' });
+    const key = raceDate.toLocaleDateString('en-CA'); // YYYY-MM-DD
+    raceDates.set(key, { 
+      distance: (race.distanceM || 0) / 1000 || race.distance || 0, 
+      priority: race.racePriority || 'c-race',
+      title: race.title || 'Race Day',
+      durationMin: Math.round(((race.durationSec || race.duration) || 0) / 60) || 0
+    });
   }
   
   const season = planSeason(aRaceDate, startDate);
@@ -144,7 +148,7 @@ export const generateSmartPlan = (
     const mobileWeekPlan: DailyPlan[] = weekPlan.map(dp => {
       const dayNum = dayCounter++;
       const dateObj = new Date(dp.date);
-      const dateKey = dp.date;
+      const dateKey = dateObj.toLocaleDateString('en-CA');
       const raceInfo = raceDates.get(dateKey);
       
       // Check if this day is within 3 days of a B race (critical window)
@@ -153,7 +157,7 @@ export const generateSmartPlan = (
       for (let offset = -3; offset <= 3; offset++) {
         const checkDate = new Date(dateObj);
         checkDate.setDate(checkDate.getDate() + offset);
-        const key = checkDate.toISOString().split('T')[0];
+        const key = checkDate.toLocaleDateString('en-CA');
         const nearbyRace = raceDates.get(key);
         if (nearbyRace) {
           if (nearbyRace.priority === 'b-race') bRaceNear = true;
@@ -170,26 +174,31 @@ export const generateSmartPlan = (
       
       if (raceInfo) {
         finalType = 'Race' as any;
-        finalTitle = '🏁 Race Day';
-        finalDesc = `${raceInfo.distance}km ${raceInfo.priority === 'b-race' ? 'B' : 'C'} race`;
+        finalTitle = raceInfo.title || '🏁 Race Day';
         finalDistance = raceInfo.distance;
-        finalDuration = Math.round(raceInfo.distance * (target.distanceKm > 10 ? 6 : 5.5)); // rough estimate
-      } else if (bRaceNear && dp.type === 'Quality') {
-        // B race nearby: reduce quality session to easier session
-        finalType = 'Easy' as any;
-        finalTitle = `Easy (B race prep)`;
-        finalDesc = `Reduced load before B race. ${finalDesc}`;
-        finalDistance = Math.round(finalDistance * 0.6); // 60% of planned
-        finalDuration = Math.round(finalDuration * 0.6);
-      } else if (bRaceNear && dp.type === 'Long') {
-        // Reduce long run before B race
-        finalDistance = Math.round(finalDistance * 0.7);
-        finalDuration = Math.round(finalDuration * 0.7);
-        finalTitle = `${finalTitle} (tapered)`;
-      } else if (bRaceNear && dp.type === 'Easy' && dp.distanceKm > 5) {
-        // Trim easy runs during B race week
-        finalDistance = Math.round(finalDistance * 0.8);
-        finalDuration = Math.round(finalDuration * 0.8);
+        finalDuration = raceInfo.durationMin > 0 
+          ? raceInfo.durationMin 
+          : Math.round(raceInfo.distance * (target.distanceKm > 10 ? 6 : 5.5));
+        finalDesc = `${raceInfo.distance}km ${raceInfo.priority === 'b-race' ? 'B' : 'C'} race. This is a ${raceInfo.priority === 'b-race' ? 'key preparation' : 'training'} race.`;
+      } else if (bRaceNear && dp.type !== 'Rest') {
+        if (dp.type === 'Quality') {
+          // B race nearby: reduce quality session to easier session
+          finalType = 'Easy' as any;
+          finalTitle = `Easy (B race prep)`;
+          finalDesc = `Reduced load before B race.`;
+          finalDistance = Math.round(finalDistance * 0.6); // 60% of planned
+          finalDuration = Math.round(finalDuration * 0.6);
+        } else if (dp.type === 'Long') {
+          // Reduce long run before B race
+          finalDistance = Math.round(finalDistance * 0.7);
+          finalDuration = Math.round(finalDuration * 0.7);
+          finalTitle = `${finalTitle} (tapered)`;
+          finalDesc = `Tapered long run before B race.`;
+        } else if (dp.type === 'Easy' && dp.distanceKm > 5) {
+          // Trim easy runs during B race week
+          finalDistance = Math.round(finalDistance * 0.8);
+          finalDuration = Math.round(finalDuration * 0.8);
+        }
       }
       // C race: no changes needed per the reference
       
@@ -314,4 +323,67 @@ function getIntensity(dp: SharedDayPlan): DailyPlan['intensity'] {
   if (dp.type === 'Quality') return 'high';
   if (dp.type === 'Long') return 'medium';
   return 'low';
+}
+
+export interface LoadMetrics {
+  acwr: number;
+  monotony: number;
+  strain: number;
+  acuteLoad: number;
+  chronicLoad: number;
+  warnings: string[];
+}
+
+export function calculateLoadMetrics(
+  dailyPlan: DailyPlan[],
+  currentAcuteLoad: number = 0,
+  currentChronicLoad: number = 0
+): LoadMetrics {
+  const warnings: string[] = [];
+  
+  const dailyLoads = dailyPlan.map(day => {
+    const durationMin = day.durationMin || 0;
+    const rpe = day.rpe || 5;
+    return durationMin * rpe;
+  });
+  
+  const totalWeeklyLoad = dailyLoads.reduce((a, b) => a + b, 0);
+  
+  const chronicLoad = currentChronicLoad > 0 
+    ? currentChronicLoad 
+    : currentAcuteLoad > 0 
+      ? currentAcuteLoad 
+      : totalWeeklyLoad;
+  
+  const acwr = chronicLoad > 0 ? totalWeeklyLoad / chronicLoad : 1.0;
+  
+  const avgDailyLoad = dailyLoads.length > 0 ? totalWeeklyLoad / 7 : 0;
+  const variance = dailyLoads.reduce((sum, load) => sum + Math.pow(load - avgDailyLoad, 2), 0) / 7;
+  const stdDev = Math.sqrt(variance);
+  const monotony = stdDev > 0 ? avgDailyLoad / stdDev : 1.0;
+  
+  const strain = totalWeeklyLoad * monotony;
+  
+  if (acwr > 1.5) {
+    warnings.push(`⚠️ ACWR is ${acwr.toFixed(1)} (safe: 0.8-1.3). Easy runs will be trimmed.`);
+  } else if (acwr < 0.8) {
+    warnings.push(`📉 ACWR is ${acwr.toFixed(1)} - consider increasing training load.`);
+  }
+  
+  if (monotony > 2.0 && totalWeeklyLoad > 300) {
+    warnings.push(`⚠️ Monotony is ${monotony.toFixed(1)} (safe: <2.0). Consider varying intensity.`);
+  }
+  
+  if (strain > 5000 && monotony > 1.5) {
+    warnings.push(`🚨 High strain detected - illness risk elevated.`);
+  }
+  
+  return {
+    acwr: Math.round(acwr * 100) / 100,
+    monotony: Math.round(monotony * 100) / 100,
+    strain: Math.round(strain),
+    acuteLoad: Math.round(totalWeeklyLoad),
+    chronicLoad: Math.round(chronicLoad),
+    warnings
+  };
 }
