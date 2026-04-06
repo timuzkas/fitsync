@@ -37,7 +37,10 @@ export default function AddWorkoutScreen() {
   const [notes, setNotes] = useState('');
   const [sessionPurpose, setSessionPurpose] = useState<'training' | 'b-race' | 'c-race'>('training');
   const [targetDist, setTargetDist] = useState('');
-  const [targetTime, setTargetTime] = useState('');
+  const [targetHours, setTargetHours] = useState('1');
+  const [targetMinutes, setTargetMinutes] = useState('0');
+  const [targetSeconds, setTargetSeconds] = useState('0');
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showPurposePicker, setShowPurposePicker] = useState(false);
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
   const [exercises, setExercises] = useState<any[]>([]);
@@ -125,9 +128,9 @@ export default function AddWorkoutScreen() {
         type: workoutType,
         startedAt: combinedDate.toISOString(),
         durationSec: parseInt(durMin) * 60,
-        distanceM: distanceKm ? parseFloat(distanceKm) * 1000 : undefined,
-        avgHr: avgHr ? parseInt(avgHr) : undefined,
-        calories: calories ? parseInt(calories) : undefined,
+        distanceM: entryMode === 'log' && distanceKm ? parseFloat(distanceKm) * 1000 : (entryMode === 'plan' && targetDist ? parseFloat(targetDist) * 1000 : undefined),
+        avgHr: entryMode === 'log' && avgHr ? parseInt(avgHr) : undefined,
+        calories: entryMode === 'log' && calories ? parseFloat(calories) : undefined,
         notes: (notes || '') + (sessionPurpose !== 'training' ? `\n[Type: ${sessionPurpose.toUpperCase()}]` : ''),
         exercises: validExs,
         isPlanned: sessionPurpose !== 'training',
@@ -144,6 +147,7 @@ export default function AddWorkoutScreen() {
     if (step === 0) return !!entryMode;
     if (step === 1) return !!workoutType;
     if (step === 2) return !!title.trim() && !!durMin;
+    if (step === 3 && entryMode === 'plan') return !!targetDist;
     return true;
   }
 
@@ -157,7 +161,9 @@ export default function AddWorkoutScreen() {
           <TouchableOpacity onPress={() => step === 0 ? navigation.goBack() : setStep(s => s - 1)}>
             <Text style={styles.back}>{step === 0 ? '✕' : '←'}</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Add Workout</Text>
+          <Text style={styles.headerTitle}>
+            {entryMode === 'plan' ? 'Plan Race' : 'Add Workout'}
+          </Text>
           <View style={{ width: 30 }} />
         </View>
 
@@ -165,27 +171,27 @@ export default function AddWorkoutScreen() {
 
         <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
 
-  {step === 0 && (
-    <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>What are you logging?</Text>
-      <View style={styles.entryModeGrid}>
-        <TouchableOpacity 
-          style={[styles.modeCard, entryMode === 'log' && styles.modeCardActive]}
-          onPress={() => { setEntryMode('log'); setSessionPurpose('training'); }}
-        >
-          <Text style={styles.modeIcon}>🏃</Text>
-          <Text style={styles.modeTitle}>Training</Text>
-          <Text style={styles.modeDesc}>Completed workout or race</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.modeCard, entryMode === 'plan' && styles.modeCardActive]}
-          onPress={() => { setEntryMode('plan'); setSessionPurpose('c-race'); }}
-        >
-          <Text style={styles.modeIcon}>🏁</Text>
-          <Text style={styles.modeTitle}>Planned Race</Text>
-          <Text style={styles.modeDesc}>Future B or C event</Text>
-        </TouchableOpacity>
-      </View>
+          {step === 0 && (
+            <View style={styles.stepContent}>
+              <Text style={styles.stepTitle}>What are you logging?</Text>
+              <View style={styles.entryModeGrid}>
+                <TouchableOpacity 
+                  style={[styles.modeCard, entryMode === 'log' && styles.modeCardActive]}
+                  onPress={() => { setEntryMode('log'); setSessionPurpose('training'); }}
+                >
+                  <Text style={styles.modeIcon}>🏃</Text>
+                  <Text style={styles.modeTitle}>Log Activity</Text>
+                  <Text style={styles.modeDesc}>Completed workout/race</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.modeCard, entryMode === 'plan' && styles.modeCardActive]}
+                  onPress={() => { setEntryMode('plan'); setSessionPurpose('c-race'); }}
+                >
+                  <Text style={styles.modeIcon}>🏁</Text>
+                  <Text style={styles.modeTitle}>Plan Race</Text>
+                  <Text style={styles.modeDesc}>Future B or C event</Text>
+                </TouchableOpacity>
+              </View>
 
       {entryMode === 'plan' && (
         <>
@@ -221,7 +227,6 @@ export default function AddWorkoutScreen() {
                     onPress={() => setWorkoutType(t.id)}
                   >
                     <Text style={styles.typeIcon}>{t.icon}</Text>
-                    <Text style={[styles.typeLabel, workoutType === t.id && styles.typeLabelActive]}>{t.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -296,35 +301,93 @@ export default function AddWorkoutScreen() {
             </View>
           )}
 
-          {step === 3 && (
+          {step === 3 && entryMode === 'plan' && (
             <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>
-                {entryMode === 'plan' ? 'Race Goals' : 'Performance Stats'}
-              </Text>
+              <Text style={styles.stepTitle}>Race Goals</Text>
+              
+              <Text style={styles.fieldLabel}>Target Distance (km)</Text>
+              <TextInput
+                style={styles.input}
+                value={targetDist}
+                onChangeText={setTargetDist}
+                placeholder="10.0"
+                placeholderTextColor={tokens.color.textMuted}
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.fieldLabel}>Target Time</Text>
+              <View style={styles.timeRow}>
+                <View style={styles.timeInputGroup}>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={targetHours}
+                    onChangeText={v => setTargetHours(v.replace(/[^0-9]/g, '').slice(0, 2))}
+                    keyboardType="numeric"
+                    maxLength={2}
+                  />
+                  <Text style={styles.timeLabel}>h</Text>
+                </View>
+                <Text style={styles.timeSep}>:</Text>
+                <View style={styles.timeInputGroup}>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={targetMinutes}
+                    onChangeText={v => setTargetMinutes(v.replace(/[^0-9]/g, '').slice(0, 2))}
+                    keyboardType="numeric"
+                    maxLength={2}
+                  />
+                  <Text style={styles.timeLabel}>m</Text>
+                </View>
+                <Text style={styles.timeSep}>:</Text>
+                <View style={styles.timeInputGroup}>
+                  <TextInput
+                    style={styles.timeInput}
+                    value={targetSeconds}
+                    onChangeText={v => setTargetSeconds(v.replace(/[^0-9]/g, '').slice(0, 2))}
+                    keyboardType="numeric"
+                    maxLength={2}
+                  />
+                  <Text style={styles.timeLabel}>s</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {step === 3 && entryMode === 'log' && (
+            <View style={styles.stepContent}>
+              <Text style={styles.stepTitle}>Performance Stats</Text>
               
               <Text style={styles.fieldLabel}>Distance (km)</Text>
               <TextInput
                 style={styles.input}
-                value={entryMode === 'plan' ? targetDist : distanceKm}
-                onChangeText={entryMode === 'plan' ? setTargetDist : setDistanceKm}
+                value={distanceKm}
+                onChangeText={setDistanceKm}
                 placeholder="5.0"
                 placeholderTextColor={tokens.color.textMuted}
                 keyboardType="numeric"
               />
 
-              {entryMode === 'log' && (
-                <>
-                  <Text style={styles.fieldLabel}>Avg Heart Rate (bpm)</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={avgHr}
-                    onChangeText={setAvgHr}
-                    placeholder="145"
-                    placeholderTextColor={tokens.color.textMuted}
-                    keyboardType="numeric"
-                  />
-                </>
-              )}
+              <Text style={styles.fieldLabel}>Avg Heart Rate (bpm)</Text>
+              <TextInput
+                style={styles.input}
+                value={avgHr}
+                onChangeText={setAvgHr}
+                placeholder="145"
+                placeholderTextColor={tokens.color.textMuted}
+                keyboardType="numeric"
+              />
+
+              <Text style={styles.fieldLabel}>Calories (optional)</Text>
+              <TextInput
+                style={styles.input}
+                value={calories}
+                onChangeText={setCalories}
+                placeholder="350"
+                placeholderTextColor={tokens.color.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+          )}
 
           {step === 2 && entryMode === 'log' && workoutType === 'strength' && (
             <View style={{ marginTop: tokens.space.lg }}>
@@ -387,39 +450,72 @@ export default function AddWorkoutScreen() {
               </TouchableOpacity>
             </View>
           )}
-            </View>
-          )}
 
           {step === 4 && (
             <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Review & Save</Text>
-              <View style={styles.reviewCard}>
-                <Text style={styles.reviewIcon}>{WORKOUT_TYPES.find(t => t.id === workoutType)?.icon}</Text>
-                <View style={styles.reviewInfo}>
-                  <Text style={styles.reviewTitle}>{title || workoutType}</Text>
-                  <Text style={styles.reviewSub}>
-                    {dateStr} · {durMin} min · {entryMode === 'plan' ? targetDist : distanceKm} km
-                  </Text>
-                  {entryMode === 'plan' && (
-                    <View style={[styles.badge, { backgroundColor: tokens.color.warning + '20' }]}>
-                      <Text style={[styles.badgeText, { color: tokens.color.warning }]}>
-                        {sessionPurpose.toUpperCase()}
+              <Text style={styles.stepTitle}>
+                {entryMode === 'plan' ? '📋 Plan Summary' : '📋 Review'}
+              </Text>
+              
+              <View style={styles.summaryCard}>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Type</Text>
+                  <Text style={styles.summaryValue}>{WORKOUT_TYPES.find(t => t.id === workoutType)?.icon} {workoutType}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Date</Text>
+                  <Text style={styles.summaryValue}>{dateStr}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Duration</Text>
+                  <Text style={styles.summaryValue}>{durMin} min</Text>
+                </View>
+                
+                {entryMode === 'plan' ? (
+                  <>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Target</Text>
+                      <Text style={styles.summaryValue}>{targetDist || '-'} km</Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Goal Time</Text>
+                      <Text style={styles.summaryValue}>
+                        {targetHours || '0'}h {targetMinutes || '0'}m {targetSeconds || '0'}s
                       </Text>
                     </View>
-                  )}
-                </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Priority</Text>
+                      <View style={[styles.priorityBadge, sessionPurpose === 'b-race' ? styles.badgeB : styles.badgeC]}>
+                        <Text style={styles.priorityBadgeText}>{sessionPurpose === 'b-race' ? 'B Race' : 'C Race'}</Text>
+                      </View>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Distance</Text>
+                      <Text style={styles.summaryValue}>{distanceKm || '-'} km</Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Avg HR</Text>
+                      <Text style={styles.summaryValue}>{avgHr || '-'} bpm</Text>
+                    </View>
+                  </>
+                )}
               </View>
 
-              <Text style={[styles.stepTitle, { marginTop: tokens.space.xl }]}>Load Preview</Text>
-              <View style={styles.loadPreviewBox}>
-                <Text style={styles.loadVal}>
-                  +{Math.round(parseInt(durMin || '0') * (entryMode === 'plan' ? 0.8 : 0.6))}
-                </Text>
-                <Text style={styles.loadLabel}>Estimated AU Impact</Text>
+              <View style={styles.loadPreviewCard}>
+                <Text style={styles.loadPreviewTitle}>Estimated Load Impact</Text>
+                <View style={styles.loadRow}>
+                  <Text style={styles.loadLabel}>Acute Load</Text>
+                  <Text style={styles.loadValue}>
+                    +{Math.round(parseInt(durMin || '0') * (entryMode === 'plan' ? 0.8 : 0.6))} AU
+                  </Text>
+                </View>
                 <View style={styles.loadBarBg}>
                   <View style={[styles.loadBarFill, { width: '65%' }]} />
                 </View>
-                <Text style={styles.loadHint}>This will be added to your acute load history.</Text>
+                <Text style={styles.loadHint}>This will be added to your acute load</Text>
               </View>
             </View>
           )}
@@ -428,8 +524,13 @@ export default function AddWorkoutScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
+          {step > 0 && (
+            <TouchableOpacity style={styles.backBtn} onPress={() => setStep(s => s - 1)}>
+              <Text style={styles.backBtnText}>← Back</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
-            style={[styles.continueBtn, !canContinue() && styles.continueBtnDisabled]}
+            style={[styles.continueBtn, step === 0 && styles.continueBtnFull]}
             onPress={() => {
               if (step < 4) setStep(s => s + 1);
               else handleSave();
@@ -516,6 +617,7 @@ const styles = StyleSheet.create({
   },
   typeIcon: { fontSize: 32 },
   fieldLabel: { fontSize: tokens.font.sm, color: tokens.color.textMuted, marginBottom: 4, marginTop: tokens.space.lg },
+  fieldHint: { fontSize: tokens.font.xs, color: tokens.color.textMuted, marginTop: 2 },
   input: {
     backgroundColor: tokens.color.surface,
     color: tokens.color.textPrimary,
@@ -549,6 +651,24 @@ const styles = StyleSheet.create({
   libItem: { padding: tokens.space.sm, borderBottomWidth: 1, borderBottomColor: tokens.color.border },
   libName: { fontSize: tokens.font.sm, color: tokens.color.textPrimary, fontWeight: '500' },
   libMuscles: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
+  loadPreviewBox: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md, padding: tokens.space.md, marginTop: tokens.space.md },
+  summaryCard: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md, padding: tokens.space.md },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: tokens.space.sm, borderBottomWidth: 1, borderBottomColor: tokens.color.border },
+  summaryLabel: { fontSize: tokens.font.sm, color: tokens.color.textMuted },
+  summaryValue: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary, textTransform: 'capitalize' },
+  priorityBadge: { paddingHorizontal: tokens.space.sm, paddingVertical: 2, borderRadius: tokens.radius.sm },
+  badgeB: { backgroundColor: tokens.color.warning + '30' },
+  badgeC: { backgroundColor: tokens.color.primary + '30' },
+  priorityBadgeText: { fontSize: tokens.font.xs, fontWeight: 'bold', color: tokens.color.textPrimary },
+  loadPreviewCard: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md, padding: tokens.space.md, marginTop: tokens.space.lg },
+  loadPreviewTitle: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary, marginBottom: tokens.space.md },
+  loadRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: tokens.space.sm },
+  loadValue: { fontSize: tokens.font.lg, fontWeight: 'bold', color: tokens.color.primary },
+  loadVal: { fontSize: 32, fontWeight: 'bold', color: tokens.color.primary, textAlign: 'center' },
+  loadLabel: { fontSize: tokens.font.sm, color: tokens.color.textMuted, textAlign: 'center', marginTop: 4 },
+  loadBarBg: { height: 8, backgroundColor: tokens.color.border, borderRadius: 4, marginTop: tokens.space.md, overflow: 'hidden' },
+  loadBarFill: { height: '100%', backgroundColor: tokens.color.primary, borderRadius: 4 },
+  loadHint: { fontSize: tokens.font.xs, color: tokens.color.textMuted, textAlign: 'center', marginTop: tokens.space.sm },
   loadPreview: { gap: tokens.space.xs },
   loadPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm },
   loadPreviewBullet: { color: tokens.color.primary, fontSize: 16, marginRight: -4 },
@@ -594,8 +714,28 @@ const styles = StyleSheet.create({
   purposeDesc: { fontSize: 10, color: tokens.color.textMuted, marginTop: 2, textAlign: 'center' },
   purposeTextActive: { color: '#fff' },
   purposeTextActiveMuted: { color: 'rgba(255,255,255,0.7)' },
-  footer: { padding: tokens.space.md, paddingBottom: tokens.space.xl },
-  continueBtn: { backgroundColor: tokens.color.primary, borderRadius: tokens.radius.sm, padding: tokens.space.md, alignItems: 'center' },
+  timeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: tokens.space.sm, marginTop: tokens.space.sm },
+  timeInputGroup: { flexDirection: 'row', alignItems: 'center' },
+  timeInput: { 
+    backgroundColor: tokens.color.surface, 
+    borderRadius: tokens.radius.sm, 
+    paddingHorizontal: tokens.space.sm, 
+    paddingVertical: tokens.space.sm, 
+    fontSize: tokens.font.lg, 
+    fontWeight: 'bold',
+    width: 50, 
+    textAlign: 'center',
+    borderWidth: 1, 
+    borderColor: tokens.color.border,
+    color: tokens.color.textPrimary,
+  },
+  timeLabel: { fontSize: tokens.font.sm, color: tokens.color.textMuted, marginLeft: 4 },
+  timeSep: { fontSize: tokens.font.lg, fontWeight: 'bold', color: tokens.color.textPrimary },
+  footer: { flexDirection: 'row', padding: tokens.space.md, paddingBottom: tokens.space.xl, gap: tokens.space.md },
+  backBtn: { flex: 1, backgroundColor: tokens.color.surface, borderRadius: tokens.radius.sm, padding: tokens.space.md, alignItems: 'center', borderWidth: 1, borderColor: tokens.color.border },
+  backBtnText: { color: tokens.color.textPrimary, fontSize: tokens.font.md, fontWeight: '600' },
+  continueBtn: { flex: 2, backgroundColor: tokens.color.primary, borderRadius: tokens.radius.sm, padding: tokens.space.md, alignItems: 'center' },
+  continueBtnFull: { flex: 1 },
   continueBtnDisabled: { opacity: 0.3 },
   continueBtnText: { color: '#fff', fontSize: tokens.font.lg, fontWeight: 'bold' },
 });
