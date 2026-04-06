@@ -22,6 +22,7 @@ export async function POST(request: Request) {
     const config = (installation.config as unknown as LoadConfig) || DEFAULT_CONFIG;
 
     const body = await request.json();
+    const workoutId = body.id;
     const title = String(body.title || '');
     const startedAt = String(body.startedAt || '');
     const durationSec = Number(body.durationSec) || 0;
@@ -33,6 +34,33 @@ export async function POST(request: Request) {
     const sessionPurpose = body.sessionPurpose ? String(body.sessionPurpose) : null;
     const targetTimeSec = body.targetTimeSec ? Number(body.targetTimeSec) : null;
     const exercises = body.exercises || [];
+
+    // Handle edit mode
+    if (workoutId) {
+      const existing = await prisma.workout.findFirst({
+        where: { id: workoutId, deviceInstallationId: installation.id },
+      });
+      if (!existing) {
+        return NextResponse.json({ error: 'Workout not found' }, { status: 404 });
+      }
+      
+      const updated = await prisma.workout.update({
+        where: { id: workoutId },
+        data: {
+          title,
+          type: workoutType,
+          startedAt: new Date(startedAt),
+          durationSec,
+          distanceM,
+          avgHr,
+          elevationGainM,
+          isPlanned,
+          sessionPurpose: isPlanned ? sessionPurpose : null,
+          targetTimeSec: isPlanned ? targetTimeSec : null,
+        },
+      });
+      return NextResponse.json(updated);
+    }
 
     if (!title || !startedAt || !durationSec) {
       return NextResponse.json({ error: 'Missing required fields: title, startedAt, durationSec' }, { status: 400 });

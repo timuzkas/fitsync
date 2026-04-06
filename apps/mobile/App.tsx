@@ -28,24 +28,33 @@ const Stack = createNativeStackNavigator();
 function HomeScreen({ navigation }: any) {
   const { deviceId, deviceSecret, isLoading: regLoading, target, _hasHydrated } = useDeviceStore();
   const [workouts, setWorkouts] = useState<any[]>([]);
+  const [plannedWorkouts, setPlannedWorkouts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [loadData, setLoadData] = useState<any>(null);
 
   useEffect(() => {
     if (deviceId && deviceSecret) {
-      Promise.all([fetchWorkouts(), fetchLoad()]);
+      Promise.all([fetchWorkouts(), fetchLoad(), fetchPlanned()]);
     }
   }, [deviceId, deviceSecret]);
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', () => {
       if (deviceId && deviceSecret) {
-        Promise.all([fetchWorkouts(), fetchLoad()]);
+        Promise.all([fetchWorkouts(), fetchLoad(), fetchPlanned()]);
       }
     });
     return unsub;
   }, [navigation, deviceId, deviceSecret]);
+
+  async function fetchPlanned() {
+    if (!deviceId || !deviceSecret) return;
+    try {
+      const data = await api.getPlannedRaces(deviceId, deviceSecret);
+      setPlannedWorkouts(data.plannedRaces || []);
+    } catch (e) { console.error(e); }
+  }
 
   async function fetchWorkouts() {
     if (!deviceId || !deviceSecret) return;
@@ -212,6 +221,36 @@ function HomeScreen({ navigation }: any) {
           workouts.map((w) => <WorkoutCard key={w.id} workout={w} onDelete={handleDeleteWorkout} />)
         )}
 
+        {plannedWorkouts.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Planned</Text>
+            </View>
+            {plannedWorkouts.slice(0, 3).map((w) => (
+              <TouchableOpacity
+                key={w.id}
+                style={styles.plannedCard}
+                onPress={() => {
+                  Alert.alert(
+                    w.title || 'Planned Workout',
+                    `${new Date(w.startedAt).toLocaleDateString()}${w.distanceM ? ` • ${(w.distanceM/1000).toFixed(1)}km` : ''}`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'View Plan', onPress: () => navigation.navigate('Plan') },
+                    ]
+                  );
+                }}
+              >
+                <Text style={styles.plannedCardTitle}>{w.title || 'Planned Workout'}</Text>
+                <Text style={styles.plannedCardDate}>
+                  {new Date(w.startedAt).toLocaleDateString()}
+                  {w.distanceM && ` • ${(w.distanceM/1000).toFixed(1)}km`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
@@ -360,6 +399,25 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.xs,
     color: tokens.color.textSecondary,
     fontWeight: '600',
+  },
+  plannedCard: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    padding: tokens.space.md,
+    marginBottom: tokens.space.sm,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    opacity: 0.6,
+  },
+  plannedCardTitle: {
+    fontSize: tokens.font.md,
+    fontWeight: '600',
+    color: tokens.color.textPrimary,
+  },
+  plannedCardDate: {
+    fontSize: tokens.font.sm,
+    color: tokens.color.textMuted,
+    marginTop: 2,
   },
 });
 

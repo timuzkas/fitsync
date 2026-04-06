@@ -139,18 +139,20 @@ export default function TrainingEngineScreen() {
                     );
                   }}
                 >
-                  <Text style={[
-                    styles.baselineLabel,
-                    config.baselineLevel === level && styles.baselineLabelActive
-                  ]}>
-                    {level.charAt(0).toUpperCase() + level.slice(1)}
-                  </Text>
+                  <View>
+                    <Text style={[
+                      styles.baselineLabel,
+                      config.baselineLevel === level && styles.baselineLabelActive
+                    ]}>
+                      {level.charAt(0).toUpperCase() + level.slice(1)}
+                    </Text>
+                    <Text style={styles.baselineDesc}>
+                      {level === 'beginner' && '>35 min 5K'}
+                      {level === 'intermediate' && '25-35 min 5K'}
+                      {level === 'advanced' && '<25 min 5K'}
+                    </Text>
+                  </View>
                   <Text style={styles.baselineVdot}>VDOT {BASELINE_VDOT[level]}</Text>
-                  <Text style={styles.baselineDesc}>
-                    {level === 'beginner' && '>35 min 5K'}
-                    {level === 'intermediate' && '25-35 min 5K'}
-                    {level === 'advanced' && '<25 min 5K'}
-                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -348,16 +350,16 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   baselineGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     gap: tokens.space.sm,
   },
   baselineCard: {
-    flex: 1,
     backgroundColor: tokens.color.surface,
     borderRadius: tokens.radius.md,
     padding: tokens.space.md,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: tokens.color.border,
   },

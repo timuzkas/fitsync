@@ -21,22 +21,22 @@ const WORKOUT_TYPES = [
 
 const MUSCLE_GROUPS = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Legs', 'Glutes', 'Core', 'Calves', 'Forearms'];
 
-export default function AddWorkoutScreen() {
-  const navigation = useNavigation<any>();
+export default function AddWorkoutScreen({ route, navigation }: any) {
   const { deviceId, deviceSecret } = useDeviceStore();
-  const [step, setStep] = useState(0);
-  const [entryMode, setEntryMode] = useState<'log' | 'plan' | ''>('');
-  const [workoutType, setWorkoutType] = useState('');
-  const [title, setTitle] = useState('');
-  const [durMin, setDurMin] = useState('');
-  const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
-  const [timeStr, setTimeStr] = useState(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
-  const [distanceKm, setDistanceKm] = useState('');
-  const [avgHr, setAvgHr] = useState('');
+  const editWorkout = route?.params?.editWorkout;
+  const [step, setStep] = useState(editWorkout ? 2 : 0);
+  const [entryMode, setEntryMode] = useState<'log' | 'plan' | ''>(editWorkout?.isPlanned ? 'plan' : '');
+  const [workoutType, setWorkoutType] = useState(editWorkout?.type || '');
+  const [title, setTitle] = useState(editWorkout?.title || '');
+  const [durMin, setDurMin] = useState(editWorkout ? String(Math.round((editWorkout.durationSec || editWorkout.targetTimeSec || 0) / 60)) : '');
+  const [dateStr, setDateStr] = useState(editWorkout ? new Date(editWorkout.startedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+  const [timeStr, setTimeStr] = useState(editWorkout ? new Date(editWorkout.startedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+  const [distanceKm, setDistanceKm] = useState(editWorkout?.distanceM ? String(editWorkout.distanceM / 1000) : '');
+  const [avgHr, setAvgHr] = useState(editWorkout?.avgHr ? String(editWorkout.avgHr) : '');
   const [calories, setCalories] = useState('');
   const [notes, setNotes] = useState('');
-  const [sessionPurpose, setSessionPurpose] = useState<'training' | 'b-race' | 'c-race'>('training');
-  const [targetDist, setTargetDist] = useState('');
+  const [sessionPurpose, setSessionPurpose] = useState<'training' | 'b-race' | 'c-race'>(editWorkout?.sessionPurpose || 'training');
+  const [targetDist, setTargetDist] = useState(editWorkout?.distanceM ? String(editWorkout.distanceM / 1000) : '');
   const [targetHours, setTargetHours] = useState('1');
   const [targetMinutes, setTargetMinutes] = useState('0');
   const [targetSeconds, setTargetSeconds] = useState('0');
@@ -123,7 +123,8 @@ export default function AddWorkoutScreen() {
         combinedDate.setHours(parseInt(timeParts[0]), parseInt(timeParts[1]), 0, 0);
       }
 
-      await api.createManualWorkout(deviceId, deviceSecret, {
+      const workoutData = {
+        ...(editWorkout?.id && { id: editWorkout.id }),
         title: title.trim(),
         type: workoutType,
         startedAt: combinedDate.toISOString(),
@@ -136,8 +137,15 @@ export default function AddWorkoutScreen() {
         isPlanned: sessionPurpose !== 'training',
         sessionPurpose: sessionPurpose !== 'training' ? sessionPurpose : undefined,
         targetTimeSec: entryMode === 'plan' ? (parseInt(targetHours || '0') * 3600 + parseInt(targetMinutes || '0') * 60 + parseInt(targetSeconds || '0')) : undefined,
-      });
-      Alert.alert('Saved!', 'Workout added', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+      };
+
+      if (editWorkout?.id) {
+        await api.updateManualWorkout(deviceId, deviceSecret, workoutData);
+        Alert.alert('Updated!', 'Workout updated', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+      } else {
+        await api.createManualWorkout(deviceId, deviceSecret, workoutData);
+        Alert.alert('Saved!', 'Workout added', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+      }
     } catch (e: any) {
       Alert.alert('Error', e.message);
     } finally {

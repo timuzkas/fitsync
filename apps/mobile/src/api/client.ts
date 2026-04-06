@@ -177,6 +177,19 @@ export const api = {
     return res.json();
   },
 
+  async updateManualWorkout(deviceId: string, deviceSecret: string, workout: any) {
+    const res = await apiFetch('/api/workouts/manual', {
+      method: 'POST',
+      headers: headers(deviceId, deviceSecret),
+      body: JSON.stringify(workout),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to update workout');
+    }
+    return res.json();
+  },
+
   async getLoadToday(deviceId: string, deviceSecret: string) {
     const res = await apiFetch('/api/load/today', { headers: headers(deviceId, deviceSecret) });
     if (!res.ok) throw new Error('Failed to fetch load');

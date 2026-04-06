@@ -465,6 +465,55 @@ export default function PlanScreen() {
           </>
         )}
 
+        {plannedRaces.length > 0 && (
+          <View style={styles.plannedRacesSection}>
+            <Text style={styles.plannedRacesTitle}>Planned Workouts</Text>
+            {plannedRaces.map((race: any) => {
+              const raceDate = new Date(race.startedAt);
+              const isPast = raceDate < today;
+              return (
+                <TouchableOpacity
+                  key={race.id}
+                  style={[styles.plannedRaceCard, isPast && styles.plannedRacePast]}
+                  onPress={() => {
+                    Alert.alert(
+                      race.title || 'Planned Workout',
+                      `${formatDate(race.startedAt)}${race.distanceM ? ` • ${(race.distanceM/1000).toFixed(1)}km` : ''}`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: race }) },
+                        { text: 'Link to Completed', onPress: () => handleLinkRace(race) },
+                        { text: 'Delete', style: 'destructive', onPress: async () => {
+                          try {
+                            await api.deleteWorkout(deviceId, deviceSecret, race.id);
+                            api.getPlannedRaces(deviceId, deviceSecret).then(result => {
+                              setPlannedRaces(result.plannedRaces || []);
+                            });
+                          } catch (e) { Alert.alert('Error', 'Failed to delete'); }
+                        }},
+                      ]
+                    );
+                  }}
+                >
+                  <View style={styles.plannedRaceInfo}>
+                    <Text style={styles.plannedRaceTitle}>{race.title || 'Planned Workout'}</Text>
+                    <Text style={styles.plannedRaceDate}>
+                      {formatDate(race.startedAt)}
+                      {race.distanceM && ` • ${(race.distanceM/1000).toFixed(1)}km`}
+                      {race.targetTimeSec && ` • ${Math.round(race.targetTimeSec/60)}min`}
+                    </Text>
+                  </View>
+                  <View style={[styles.priorityBadge, race.sessionPurpose === 'b-race' ? styles.badgeB : styles.badgeC]}>
+                    <Text style={styles.priorityBadgeText}>
+                      {race.sessionPurpose === 'b-race' ? 'B' : race.isPlanned ? 'C' : '•'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         <View style={{ height: 120 }} />
       </ScrollView>
     </View>
