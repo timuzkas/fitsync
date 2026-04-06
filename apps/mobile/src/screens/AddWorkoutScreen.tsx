@@ -34,7 +34,8 @@ export default function AddWorkoutScreen() {
   const [avgHr, setAvgHr] = useState('');
   const [calories, setCalories] = useState('');
   const [notes, setNotes] = useState('');
-  const [isPlanned, setIsPlanned] = useState(false);
+  const [sessionPurpose, setSessionPurpose] = useState<'regular' | 'b-race' | 'c-race'>('regular');
+  const [showPurposePicker, setShowPurposePicker] = useState(false);
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
   const [exercises, setExercises] = useState<any[]>([]);
   const [library, setLibrary] = useState<any[]>([]);
@@ -124,9 +125,9 @@ export default function AddWorkoutScreen() {
         distanceM: distanceKm ? parseFloat(distanceKm) * 1000 : undefined,
         avgHr: avgHr ? parseInt(avgHr) : undefined,
         calories: calories ? parseInt(calories) : undefined,
-        notes: notes || undefined,
+        notes: (notes || '') + (sessionPurpose !== 'regular' ? `\n[Type: ${sessionPurpose.toUpperCase()}]` : ''),
         exercises: validExs,
-        isPlanned,
+        isPlanned: sessionPurpose !== 'regular',
       });
       Alert.alert('Saved!', 'Workout added', [{ text: 'OK', onPress: () => navigation.goBack() }]);
     } catch (e: any) {
@@ -366,20 +367,23 @@ export default function AddWorkoutScreen() {
                 {calories ? ` · ${calories} kcal` : ''}
               </Text>
 
-              <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Planning</Text>
-              <TouchableOpacity 
-                style={styles.toggleRow} 
-                onPress={() => setIsPlanned(!isPlanned)}
-              >
-                <Pill 
-                  label="Plan to run a race" 
-                  variant={isPlanned ? 'primary' : 'muted'} 
-                  showCheck={isPlanned}
-                />
-                <Text style={styles.toggleLabel}>
-                  {isPlanned ? 'Marked as planned/race session' : 'Optional: Mark as part of your goal'}
-                </Text>
-              </TouchableOpacity>
+              <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Session Purpose</Text>
+              <View style={styles.purposeGrid}>
+                {[
+                  { id: 'regular', label: 'Regular', desc: 'Standard training' },
+                  { id: 'b-race', label: 'B Race', desc: 'Tune-up event' },
+                  { id: 'c-race', label: 'C Race', desc: 'Training run' },
+                ].map(p => (
+                  <TouchableOpacity 
+                    key={p.id}
+                    style={[styles.purposeCard, sessionPurpose === p.id && styles.purposeCardActive]}
+                    onPress={() => setSessionPurpose(p.id as any)}
+                  >
+                    <Text style={[styles.purposeLabel, sessionPurpose === p.id && styles.purposeTextActive]}>{p.label}</Text>
+                    <Text style={[styles.purposeDesc, sessionPurpose === p.id && styles.purposeTextActiveMuted]}>{p.desc}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
               {workoutType === 'strength' && exercises.length > 0 && (
                 <>
@@ -537,6 +541,24 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.sm,
     color: tokens.color.textSecondary,
   },
+  purposeGrid: { flexDirection: 'row', gap: tokens.space.sm },
+  purposeCard: { 
+    flex: 1, 
+    backgroundColor: tokens.color.surface, 
+    borderRadius: tokens.radius.md, 
+    padding: tokens.space.sm, 
+    borderWidth: 1, 
+    borderColor: tokens.color.border,
+    alignItems: 'center'
+  },
+  purposeCardActive: { 
+    backgroundColor: tokens.color.primary, 
+    borderColor: tokens.color.primary 
+  },
+  purposeLabel: { fontSize: tokens.font.sm, fontWeight: 'bold', color: tokens.color.textPrimary },
+  purposeDesc: { fontSize: 10, color: tokens.color.textMuted, marginTop: 2, textAlign: 'center' },
+  purposeTextActive: { color: '#fff' },
+  purposeTextActiveMuted: { color: 'rgba(255,255,255,0.7)' },
   footer: { padding: tokens.space.md, paddingBottom: tokens.space.xl },
   continueBtn: { backgroundColor: tokens.color.primary, borderRadius: tokens.radius.sm, padding: tokens.space.md, alignItems: 'center' },
   continueBtnDisabled: { opacity: 0.3 },

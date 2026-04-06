@@ -152,9 +152,71 @@ export const generateSmartPlan = (
   return { dailyPlan: allDays, weeklyStats: [] };
 };
 
-// Simple adaptation for now to satisfy imports
-export const adaptPlanAfterNewWorkout = (basePlan: DailyPlan[], lastWorkout: any, athlete: any, readinessScores: any) => {
-  return basePlan;
+// Adaptation logic to handle completed workouts and readiness-based adjustments
+export const adaptPlanAfterNewWorkout = (
+  basePlan: DailyPlan[], 
+  lastWorkout: any, 
+  athlete: any, 
+  readinessScores: Record<string, number>
+) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split('T')[0];
+  
+  return basePlan.map(day => {
+    const dayDate = new Date(day.date);
+    dayDate.setHours(0, 0, 0, 0);
+    const isToday = dayDate.getTime() === today.getTime();
+    
+    // 1. "Today" Guard: If we already worked out today, mark this slot as done
+    if (isToday && lastWorkout) {
+      const workoutDate = new Date(lastWorkout.startedAt || lastWorkout.date);
+      workoutDate.setHours(0, 0, 0, 0);
+      
+      if (workoutDate.getTime() === today.getTime()) {
+        const distKm = (lastWorkout.distanceM || 0) / 1000 || lastWorkout.distance || 0;
+        return {
+          ...day,
+          type: 'Rest' as any, // Treat rest of day as recovery
+          title: 'Workout Completed',
+          description: `You already ran ${distKm.toFixed(1)}km today. Focus on recovery.`,
+          distanceKm: 0,
+          durationMin: 0,
+          intensity: 'rest' as any
+        };
+      }
+    }
+
+    // 2. Readiness Trimming (Section 5.1): If readiness is critical (< 20 or 0), 
+    // we should downgrade or flag sessions.
+    const readiness = readinessScores[todayStr] ?? 100;
+    
+    if (readiness < 30) {
+      // If it's a Quality session and readiness is 0, we flag it as risky
+      if (day.type === 'Quality') {
+        return {
+          ...day,
+          title: `⚠️ ${day.title} (High Risk)`,
+          description: `Readiness is low (${readiness.toFixed(0)}%). Consider downgrading to Easy or Resting.`,
+          intensity: 'high' as any
+        };
+      }
+      
+      // Reduce Easy/Long run volume by 30-50% if readiness is low
+      if (day.type === 'Easy' || day.type === 'Long') {
+        const reduction = readiness < 10 ? 0.5 : 0.8;
+        return {
+          ...day,
+          title: `${day.title} (Reduced)`,
+          distanceKm: Math.round(day.distanceKm * reduction * 10) / 10,
+          durationMin: Math.round(day.durationMin * reduction),
+          description: `Volume reduced due to low readiness score.`
+        };
+      }
+    }
+
+    return day;
+  });
 };
 
 function getTitle(dp: SharedDayPlan): string {

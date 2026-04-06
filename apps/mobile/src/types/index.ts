@@ -64,6 +64,14 @@ export interface SyncResponse {
   lastSyncAt: string;
 }
 
+export interface Race {
+  id: string;
+  name: string;
+  date: string;
+  type: 'A' | 'B' | 'C';
+  distanceKm: number;
+}
+
 export interface TrainingTarget {
   id: string;
   type: 'run' | 'ride' | 'swim';
@@ -72,6 +80,7 @@ export interface TrainingTarget {
   targetTimeSec?: number;
   targetPaceSecPerKm?: number;
   targetHr?: number;
+  races?: Race[];
   createdAt: string;
 }
 
