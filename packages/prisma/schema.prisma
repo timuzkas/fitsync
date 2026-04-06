@@ -73,6 +73,8 @@ model Workout {
   vdotAtTime           Float?    // VDOT score at time of workout
   isPlanned            Boolean            @default(false)
   isManual             Boolean            @default(false)
+  sessionPurpose       String?            // "b-race", "c-race", "training"
+  linkedWorkoutId      String?            // Links a planned race to a completed workout
   dedupeHash           String?            // To prevent duplicates across sources
   
   exercises            StrengthExercise[]
