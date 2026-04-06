@@ -25,7 +25,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function PlanScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<PlanRouteParams, 'Plan'>>();
-  const { deviceId, deviceSecret, athleteProfile, planConfig, target: storedTarget, setTarget: setStoredTarget, _hasHydrated } = useDeviceStore();
+  const { deviceId, deviceSecret, athleteProfile, planConfig, target: storedTarget, setTarget: setStoredTarget, _hasHydrated, updatePlanConfig } = useDeviceStore();
 
   const [target, setTarget] = useState<TrainingTarget | null>(route.params?.target || storedTarget || null);
   const [workouts, setWorkouts] = useState<any[]>([]);
@@ -181,8 +181,11 @@ export default function PlanScreen() {
       api.getLoadToday(deviceId, deviceSecret)
         .then(data => { if (data?.readiness != null) setReadiness(data.readiness); })
         .catch(() => {});
+      api.getLoadConfig(deviceId, deviceSecret).then(cfg => {
+        updatePlanConfig(cfg);
+      }).catch(() => {});
     }
-  }, [deviceId, deviceSecret]);
+  }, [deviceId, deviceSecret, updatePlanConfig]);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -204,6 +207,7 @@ export default function PlanScreen() {
       weight: athleteProfile?.weight || 75,
       height: athleteProfile?.height,
       sex: athleteProfile?.sex,
+      vdot: athleteProfile?.vdot || planConfig?.vdot,
     };
 
     const defaults = {
@@ -680,9 +684,11 @@ export default function PlanScreen() {
                     <View style={styles.dayMetric}>
                       <Text style={styles.dayMetricValue}>{formatPace(day.targetPaceSecPerKm)}</Text>
                     </View>
-                    <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
-                      <Text style={styles.dayMetricHint}>Tap for actions ›</Text>
-                    </View>
+                    {plannedOnDay && (
+                      <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
+                        <Text style={styles.dayMetricHint}>Tap for actions ›</Text>
+                      </View>
+                    )}
                   </View>
                 )}
               </TouchableOpacity>

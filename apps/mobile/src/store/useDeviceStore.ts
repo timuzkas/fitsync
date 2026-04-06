@@ -12,6 +12,8 @@ export interface AthleteProfile {
   dob?: string;
   city?: string;
   country?: string;
+  vdot?: number;
+  easyPaceSecPerKm?: number;
 }
 
 export interface PlanConfig {
@@ -19,6 +21,7 @@ export interface PlanConfig {
   weeklyTargetKm: number;
   longRunTargetKm: number;
   sessionsPerWeek: number;
+  vdot?: number;
 }
 
 interface DeviceState {
@@ -71,7 +74,10 @@ export const useDeviceStore = create<DeviceState>()(
       setAthleteProfile: (athleteProfile) => set({ athleteProfile }),
       setPlanConfig: (planConfig) => set({ planConfig }),
       setTarget: (target) => set({ target }),
-      setHasHydrated: (state) => set({ _hasHydrated: state }),
+      _hasHydrated: state => set({ _hasHydrated: state }),
+      updatePlanConfig: (updates: Partial<PlanConfig>) => set(state => ({
+        planConfig: state.planConfig ? { ...state.planConfig, ...updates } : updates as PlanConfig
+      })),
     }),
     {
       name: 'fitsync-device-store',

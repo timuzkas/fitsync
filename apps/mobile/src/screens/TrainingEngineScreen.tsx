@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Animated, Alert
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Animated, Alert, TextInput
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useNavigation } from '@react-navigation/native';
@@ -8,13 +8,24 @@ import { tokens } from '../tokens';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { api } from '../api/client';
 
+function calculateVdotFrom5k(minutes: number, seconds: number): number {
+  const totalMin = minutes + seconds / 60;
+  if (totalMin <= 0) return 0;
+  const distM = 5000;
+  const v = distM / totalMin;
+  const t = totalMin;
+  const pctVO2max = 0.8 + 0.1894393 * Math.exp(-0.012778 * t) + 0.2989558 * Math.exp(-0.1932605 * t);
+  const vo2 = -4.60 + 0.182258 * v + 0.000104 * v * v;
+  return vo2 / pctVO2max;
+}
+
 interface EngineConfig {
   halfLifeHours: { cardio: number; legs: number; upper: number; core: number };
   multipliers: { cardio: number; legs: number; upper: number; core: number };
   weeklyTarget: number;
   readinessFormula: 'simple' | 'exponential';
   acwrThreshold: number;
-  vdotOverride?: number;
+  vdot?: number;
   baselineLevel?: 'beginner' | 'intermediate' | 'advanced';
 }
 
@@ -38,6 +49,8 @@ export default function TrainingEngineScreen() {
   const [config, setConfig] = useState<EngineConfig>(DEFAULT_CONFIG);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [fivekMin, setFivekMin] = useState('25');
+  const [fivekSec, setFivekSec] = useState('00');
 
   useEffect(() => {
     if (deviceId && deviceSecret) {
@@ -89,22 +102,64 @@ export default function TrainingEngineScreen() {
             <View style={styles.row}>
               <View>
                 <Text style={styles.cardLabel}>Current VDOT</Text>
-                <Text style={styles.cardValue}>{(config.vdotOverride || 40).toFixed(1)}</Text>
+                <Text style={styles.cardValue}>{(config.vdot || 40).toFixed(1)}</Text>
               </View>
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>ELITE</Text>
               </View>
             </View>
             <Text style={styles.cardDesc}>
-              Automatically updated by Strava, but you can override it if you have a recent laboratory VO2max test.
+              Enter your best recent 5K time to calculate your VDOT, or use the slider to adjust manually.
             </Text>
+            
+            {/* 5K Time Input */}
+            <View style={{ marginTop: 12, marginBottom: 8 }}>
+              <Text style={{ color: tokens.color.textMuted, fontSize: tokens.font.xs, marginBottom: 4 }}>
+                Calculate from 5K time (optional)
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: tokens.color.surface, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <TextInput
+                    style={{ color: tokens.color.textPrimary, fontSize: tokens.font.lg, width: 30, textAlign: 'center' }}
+                    keyboardType="number-pad"
+                    placeholder="25"
+                    placeholderTextColor={tokens.color.textMuted}
+                    maxLength={2}
+                    onChangeText={text => setFivekMin(text || '25')}
+                  />
+                  <Text style={{ color: tokens.color.textMuted, fontSize: tokens.font.lg }}>:</Text>
+                  <TextInput
+                    style={{ color: tokens.color.textPrimary, fontSize: tokens.font.lg, width: 30, textAlign: 'center' }}
+                    keyboardType="number-pad"
+                    placeholder="00"
+                    placeholderTextColor={tokens.color.textMuted}
+                    maxLength={2}
+                    onChangeText={text => setFivekSec(text || '00')}
+                  />
+                  <Text style={{ color: tokens.color.textMuted, fontSize: tokens.font.sm, marginLeft: 4 }}>min</Text>
+                </View>
+                <TouchableOpacity 
+                  style={{ backgroundColor: tokens.color.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 }}
+                  onPress={() => {
+                    const vdot = calculateVdotFrom5k(parseInt(fivekMin) || 25, parseInt(fivekSec) || 0);
+                    if (vdot > 0) {
+                      updateConfig({ vdot: Math.round(vdot * 10) / 10 });
+                      Alert.alert('VDOT Updated', `Calculated VDOT: ${vdot.toFixed(1)} from 5K in ${fivekMin}:${fivekSec.padStart(2,'0')}`);
+                    }
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '600' }}>Calculate</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <Slider
               style={styles.slider}
               minimumValue={20}
               maximumValue={85}
               step={0.5}
-              value={config.vdotOverride || 40}
-              onValueChange={v => updateConfig({ vdotOverride: v })}
+              value={config.vdot || 40}
+              onValueChange={v => updateConfig({ vdot: v })}
               minimumTrackTintColor={tokens.color.primary}
               maximumTrackTintColor={tokens.color.border}
               thumbTintColor={tokens.color.primary}
@@ -131,7 +186,7 @@ export default function TrainingEngineScreen() {
                   onPress={() => {
                     updateConfig({ 
                       baselineLevel: level,
-                      vdotOverride: BASELINE_VDOT[level]
+                      vdot: BASELINE_VDOT[level]
                     });
                     Alert.alert(
                       'VDOT Updated', 

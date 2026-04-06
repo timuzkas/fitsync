@@ -8,6 +8,7 @@ import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { enableScreens } from 'react-native-screens';
+import { calculateVdot } from '@fitsync/shared/training';
 import { useFonts } from 'expo-font';
 import { useDeviceStore } from './src/store/useDeviceStore';
 import { api } from './src/api/client';
@@ -26,7 +27,7 @@ import ProfileEditScreen from './src/screens/ProfileEditScreen';
 const Stack = createNativeStackNavigator();
 
 function HomeScreen({ navigation }: any) {
-  const { deviceId, deviceSecret, isLoading: regLoading, target, _hasHydrated } = useDeviceStore();
+  const { deviceId, deviceSecret, isLoading: regLoading, target, _hasHydrated, planConfig, updatePlanConfig } = useDeviceStore();
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [plannedWorkouts, setPlannedWorkouts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -35,14 +36,52 @@ function HomeScreen({ navigation }: any) {
 
   useEffect(() => {
     if (deviceId && deviceSecret) {
-      Promise.all([fetchWorkouts(), fetchLoad(), fetchPlanned()]);
+      Promise.all([fetchWorkouts(), fetchLoad(), fetchPlanned(), fetchConfig()]);
     }
   }, [deviceId, deviceSecret]);
+
+  async function fetchConfig() {
+    if (!deviceId || !deviceSecret) return;
+    try {
+      const cfg = await api.getLoadConfig(deviceId, deviceSecret);
+      updatePlanConfig(cfg);
+    } catch (e) { console.error(e); }
+  }
+
+  const checkForVdotUpdate = (newWorkouts: any[]) => {
+    const currentVdot = planConfig?.vdot || 40;
+    for (const w of newWorkouts) {
+      const distM = w.distanceM || 0;
+      const durationSec = w.durationSec || 0;
+      const rpe = w.rpe || 0;
+      if (distM >= 3000 && rpe >= 7 && durationSec > 0) {
+        const totalMin = durationSec / 60;
+        const newVdot = calculateVdot(distM, totalMin);
+        if (newVdot > currentVdot) {
+          const pace = (durationSec / (distM / 1000)).toFixed(0);
+          const min = Math.floor(+pace / 60);
+          const sec = (+pace % 60).toFixed(0);
+          Alert.alert(
+            '🎉 New PR Detected!',
+            `Your ${(distM/1000).toFixed(1)}km run in ${min}:${sec.padStart(2,'0')} gives you VDOT ${newVdot.toFixed(1)} (currently ${currentVdot.toFixed(1)}).\n\nUpdate your VDOT to improve training paces?`,
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'Update VDOT', onPress: () => {
+                updatePlanConfig({ vdot: Math.round(newVdot * 10) / 10 });
+                api.updateLoadConfig(deviceId!, deviceSecret!, { ...planConfig, vdot: Math.round(newVdot * 10) / 10 });
+              }}
+            ]
+          );
+          break;
+        }
+      }
+    }
+  };
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', () => {
       if (deviceId && deviceSecret) {
-        Promise.all([fetchWorkouts(), fetchLoad(), fetchPlanned()]);
+        Promise.all([fetchWorkouts(), fetchLoad(), fetchPlanned(), fetchConfig()]);
       }
     });
     return unsub;
@@ -78,7 +117,10 @@ function HomeScreen({ navigation }: any) {
     try {
       const result = await api.syncStrava(deviceId, deviceSecret);
       Alert.alert('Synced', `Imported ${result.imported} workouts`);
-      await Promise.all([fetchWorkouts(), fetchLoad()]);
+      const workoutsData = await api.getWorkouts(deviceId, deviceSecret);
+      setWorkouts(workoutsData);
+      checkForVdotUpdate(workoutsData);
+      await Promise.all([fetchLoad()]);
     } catch (e: any) {
       Alert.alert('Sync Failed', e.message);
     } finally {
