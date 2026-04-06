@@ -28,6 +28,8 @@ export async function POST(request: Request) {
     const type = body.type ? String(body.type) : 'strength';
     const distanceM = body.distanceM ? Number(body.distanceM) : null;
     const avgHr = body.avgHr ? Number(body.avgHr) : null;
+    const isPlanned = !!body.isPlanned;
+    const exercises = body.exercises || [];
 
     if (!title || !startedAt || !durationSec) {
       return NextResponse.json({ error: 'Missing required fields: title, startedAt, durationSec' }, { status: 400 });

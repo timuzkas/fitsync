@@ -25,6 +25,7 @@ export default function AddWorkoutScreen() {
   const navigation = useNavigation<any>();
   const { deviceId, deviceSecret } = useDeviceStore();
   const [step, setStep] = useState(0);
+  const [entryMode, setEntryMode] = useState<'log' | 'plan' | ''>('');
   const [workoutType, setWorkoutType] = useState('');
   const [title, setTitle] = useState('');
   const [durMin, setDurMin] = useState('');
@@ -34,7 +35,9 @@ export default function AddWorkoutScreen() {
   const [avgHr, setAvgHr] = useState('');
   const [calories, setCalories] = useState('');
   const [notes, setNotes] = useState('');
-  const [sessionPurpose, setSessionPurpose] = useState<'regular' | 'b-race' | 'c-race'>('regular');
+  const [sessionPurpose, setSessionPurpose] = useState<'training' | 'b-race' | 'c-race'>('training');
+  const [targetDist, setTargetDist] = useState('');
+  const [targetTime, setTargetTime] = useState('');
   const [showPurposePicker, setShowPurposePicker] = useState(false);
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
   const [exercises, setExercises] = useState<any[]>([]);
@@ -125,9 +128,9 @@ export default function AddWorkoutScreen() {
         distanceM: distanceKm ? parseFloat(distanceKm) * 1000 : undefined,
         avgHr: avgHr ? parseInt(avgHr) : undefined,
         calories: calories ? parseInt(calories) : undefined,
-        notes: (notes || '') + (sessionPurpose !== 'regular' ? `\n[Type: ${sessionPurpose.toUpperCase()}]` : ''),
+        notes: (notes || '') + (sessionPurpose !== 'training' ? `\n[Type: ${sessionPurpose.toUpperCase()}]` : ''),
         exercises: validExs,
-        isPlanned: sessionPurpose !== 'regular',
+        isPlanned: sessionPurpose !== 'training',
       });
       Alert.alert('Saved!', 'Workout added', [{ text: 'OK', onPress: () => navigation.goBack() }]);
     } catch (e: any) {
@@ -138,8 +141,9 @@ export default function AddWorkoutScreen() {
   }
 
   function canContinue() {
-    if (step === 0) return !!workoutType;
-    if (step === 1) return !!title.trim() && !!durMin;
+    if (step === 0) return !!entryMode;
+    if (step === 1) return !!workoutType;
+    if (step === 2) return !!title.trim() && !!durMin;
     return true;
   }
 
@@ -157,13 +161,58 @@ export default function AddWorkoutScreen() {
           <View style={{ width: 30 }} />
         </View>
 
-        <StepIndicator current={step} total={4} />
+        <StepIndicator current={step} total={5} />
 
         <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
 
-          {step === 0 && (
+  {step === 0 && (
+    <View style={styles.stepContent}>
+      <Text style={styles.stepTitle}>What are you logging?</Text>
+      <View style={styles.entryModeGrid}>
+        <TouchableOpacity 
+          style={[styles.modeCard, entryMode === 'log' && styles.modeCardActive]}
+          onPress={() => { setEntryMode('log'); setSessionPurpose('training'); }}
+        >
+          <Text style={styles.modeIcon}>🏃</Text>
+          <Text style={styles.modeTitle}>Training</Text>
+          <Text style={styles.modeDesc}>Completed workout or race</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.modeCard, entryMode === 'plan' && styles.modeCardActive]}
+          onPress={() => { setEntryMode('plan'); setSessionPurpose('c-race'); }}
+        >
+          <Text style={styles.modeIcon}>🏁</Text>
+          <Text style={styles.modeTitle}>Planned Race</Text>
+          <Text style={styles.modeDesc}>Future B or C event</Text>
+        </TouchableOpacity>
+      </View>
+
+      {entryMode === 'plan' && (
+        <>
+          <Text style={[styles.fieldLabel, { marginTop: tokens.space.lg }]}>Race Priority</Text>
+          <View style={styles.purposeGrid}>
+            {[
+              { id: 'b-race', label: 'B Race', desc: 'Important race' },
+              { id: 'c-race', label: 'C Race', desc: 'Easy/Training race' },
+            ].map(p => (
+              <TouchableOpacity 
+                key={p.id}
+                style={[styles.purposeCard, sessionPurpose === p.id && styles.purposeCardActive]}
+                onPress={() => setSessionPurpose(p.id as any)}
+              >
+                <Text style={[styles.purposeLabel, sessionPurpose === p.id && styles.purposeTextActive]}>{p.label}</Text>
+                <Text style={[styles.purposeDesc, sessionPurpose === p.id && styles.purposeTextActiveMuted]}>{p.desc}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
+    </View>
+  )}
+
+          {step === 1 && (
             <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>What did you do?</Text>
+              <Text style={styles.stepTitle}>Select Type</Text>
               <View style={styles.typeGrid}>
                 {WORKOUT_TYPES.map(t => (
                   <TouchableOpacity
@@ -172,15 +221,18 @@ export default function AddWorkoutScreen() {
                     onPress={() => setWorkoutType(t.id)}
                   >
                     <Text style={styles.typeIcon}>{t.icon}</Text>
+                    <Text style={[styles.typeLabel, workoutType === t.id && styles.typeLabelActive]}>{t.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
           )}
 
-          {step === 1 && (
+          {step === 2 && (
             <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>{WORKOUT_TYPES.find(t => t.id === workoutType)?.icon} {WORKOUT_TYPES.find(t => t.id === workoutType)?.label}</Text>
+              <Text style={styles.stepTitle}>
+                {entryMode === 'plan' ? 'Race Details' : 'Basic Info'}
+              </Text>
               
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
@@ -193,16 +245,18 @@ export default function AddWorkoutScreen() {
                     placeholderTextColor={tokens.color.textMuted}
                   />
                 </View>
-                <View style={{ flex: 1, marginLeft: tokens.space.md }}>
-                  <Text style={styles.fieldLabel}>Time</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={timeStr}
-                    onChangeText={setTimeStr}
-                    placeholder="HH:MM"
-                    placeholderTextColor={tokens.color.textMuted}
-                  />
-                </View>
+                {entryMode === 'log' && (
+                  <View style={{ flex: 1, marginLeft: tokens.space.md }}>
+                    <Text style={styles.fieldLabel}>Time</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={timeStr}
+                      onChangeText={setTimeStr}
+                      placeholder="HH:MM"
+                      placeholderTextColor={tokens.color.textMuted}
+                    />
+                  </View>
+                )}
               </View>
 
               <Text style={styles.fieldLabel}>Title</Text>
@@ -210,10 +264,13 @@ export default function AddWorkoutScreen() {
                 style={styles.input}
                 value={title}
                 onChangeText={setTitle}
-                placeholder="e.g. Morning Run, Push Day"
+                placeholder={entryMode === 'plan' ? "e.g. London 10K, Trail Half" : "e.g. Morning Run, Push Day"}
                 placeholderTextColor={tokens.color.textMuted}
               />
-              <Text style={styles.fieldLabel}>Duration (minutes)</Text>
+              
+              <Text style={styles.fieldLabel}>
+                {entryMode === 'plan' ? 'Target Duration (min)' : 'Duration (minutes)'}
+              </Text>
               <TextInput
                 style={styles.input}
                 value={durMin}
@@ -222,46 +279,64 @@ export default function AddWorkoutScreen() {
                 placeholderTextColor={tokens.color.textMuted}
                 keyboardType="numeric"
               />
-              <Text style={styles.fieldLabel}>Calories (optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={calories}
-                onChangeText={setCalories}
-                placeholder="350"
-                placeholderTextColor={tokens.color.textMuted}
-                keyboardType="numeric"
-              />
-              <Text style={styles.fieldLabel}>Notes (optional)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="How did it feel?"
-                placeholderTextColor={tokens.color.textMuted}
-                multiline
-              />
+
+              {entryMode === 'log' && (
+                <>
+                  <Text style={styles.fieldLabel}>Notes (optional)</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={notes}
+                    onChangeText={setNotes}
+                    placeholder="How did it feel?"
+                    placeholderTextColor={tokens.color.textMuted}
+                    multiline
+                  />
+                </>
+              )}
             </View>
           )}
 
-          {step === 2 && workoutType === 'strength' && (
+          {step === 3 && (
             <View style={styles.stepContent}>
+              <Text style={styles.stepTitle}>
+                {entryMode === 'plan' ? 'Race Goals' : 'Performance Stats'}
+              </Text>
+              
+              <Text style={styles.fieldLabel}>Distance (km)</Text>
+              <TextInput
+                style={styles.input}
+                value={entryMode === 'plan' ? targetDist : distanceKm}
+                onChangeText={entryMode === 'plan' ? setTargetDist : setDistanceKm}
+                placeholder="5.0"
+                placeholderTextColor={tokens.color.textMuted}
+                keyboardType="numeric"
+              />
+
+              {entryMode === 'log' && (
+                <>
+                  <Text style={styles.fieldLabel}>Avg Heart Rate (bpm)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={avgHr}
+                    onChangeText={setAvgHr}
+                    placeholder="145"
+                    placeholderTextColor={tokens.color.textMuted}
+                    keyboardType="numeric"
+                  />
+                </>
+              )}
+
+          {step === 2 && entryMode === 'log' && workoutType === 'strength' && (
+            <View style={{ marginTop: tokens.space.lg }}>
               <Text style={styles.stepTitle}>Muscle Groups</Text>
               <View style={styles.muscleGrid}>
                 {MUSCLE_GROUPS.map(mg => (
-                  <TouchableOpacity
-                    key={mg}
-                    onPress={() => toggleMuscle(mg)}
-                  >
-                    <Pill
-                      label={mg}
-                      variant={selectedMuscles.includes(mg) ? 'primary' : 'muted'}
-                      outlined={!selectedMuscles.includes(mg)}
-                      showCheck={selectedMuscles.includes(mg)}
-                    />
+                  <TouchableOpacity key={mg} onPress={() => toggleMuscle(mg)}>
+                    <Pill label={mg} variant={selectedMuscles.includes(mg) ? 'primary' : 'muted'} outlined={!selectedMuscles.includes(mg)} showCheck={selectedMuscles.includes(mg)} />
                   </TouchableOpacity>
                 ))}
               </View>
-
+              
               <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Exercises</Text>
               {exercises.map((ex, ei) => (
                 <View key={ei} style={styles.exCard}>
@@ -297,127 +372,55 @@ export default function AddWorkoutScreen() {
                         placeholderTextColor={tokens.color.textMuted}
                         keyboardType="numeric"
                       />
-                      <Text style={{ color: tokens.color.textMuted }}>kg</Text>
                       <TouchableOpacity onPress={() => remSet(ei, si)}>
-                        <Text style={{ color: tokens.color.danger, marginLeft: 4 }}>✕</Text>
+                        <Text style={{ color: tokens.color.textMuted, marginLeft: 8 }}>✕</Text>
                       </TouchableOpacity>
                     </View>
                   ))}
-                  <TouchableOpacity onPress={() => addSet(ei)}>
-                    <Text style={styles.addSet}>+ Set</Text>
+                  <TouchableOpacity style={styles.addSetBtn} onPress={() => addSet(ei)}>
+                    <Text style={styles.addSetBtnText}>+ Add Set</Text>
                   </TouchableOpacity>
                 </View>
               ))}
               <TouchableOpacity style={styles.addExBtn} onPress={() => addEx()}>
-                <Text style={styles.addExText}>+ Add Exercise</Text>
+                <Text style={styles.addExBtnText}>+ Add Exercise</Text>
               </TouchableOpacity>
-              {library.length > 0 && (
-                <>
-                  <TouchableOpacity onPress={() => setShowLib(!showLib)}>
-                    <Text style={styles.libToggle}>{showLib ? 'Hide Library' : 'From Library'}</Text>
-                  </TouchableOpacity>
-                  {showLib && (
-                    <View style={styles.libList}>
-                      {filteredLib.map((ex: any, i: number) => (
-                        <TouchableOpacity key={i} style={styles.libItem} onPress={() => { addEx(ex.name); setShowLib(false); }}>
-                          <Text style={styles.libName}>{ex.name}</Text>
-                          <Text style={styles.libMuscles}>{ex.muscleGroups.join(', ')}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </>
-              )}
+            </View>
+          )}
             </View>
           )}
 
-          {step === 2 && workoutType !== 'strength' && (
+          {step === 4 && (
             <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Performance</Text>
-              <Text style={styles.fieldLabel}>Distance (km)</Text>
-              <TextInput
-                style={styles.input}
-                value={distanceKm}
-                onChangeText={setDistanceKm}
-                placeholder="5.0"
-                placeholderTextColor={tokens.color.textMuted}
-                keyboardType="numeric"
-              />
-              <Text style={styles.fieldLabel}>Avg Heart Rate (bpm)</Text>
-              <TextInput
-                style={styles.input}
-                value={avgHr}
-                onChangeText={setAvgHr}
-                placeholder="145"
-                placeholderTextColor={tokens.color.textMuted}
-                keyboardType="numeric"
-              />
-            </View>
-          )}
-
-          {step === 3 && (
-            <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>
-                {WORKOUT_TYPES.find(t => t.id === workoutType)?.icon}{' '}
-                {title || workoutType}
-              </Text>
-              <Text style={styles.subtitle}>
-                {dateStr} @ {timeStr} · {durMin} min 
-                {distanceKm ? ` · ${distanceKm} km` : ''} 
-                {calories ? ` · ${calories} kcal` : ''}
-              </Text>
-
-              <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Session Purpose</Text>
-              <View style={styles.purposeGrid}>
-                {[
-                  { id: 'regular', label: 'Regular', desc: 'Standard training' },
-                  { id: 'b-race', label: 'B Race', desc: 'Tune-up event' },
-                  { id: 'c-race', label: 'C Race', desc: 'Training run' },
-                ].map(p => (
-                  <TouchableOpacity 
-                    key={p.id}
-                    style={[styles.purposeCard, sessionPurpose === p.id && styles.purposeCardActive]}
-                    onPress={() => setSessionPurpose(p.id as any)}
-                  >
-                    <Text style={[styles.purposeLabel, sessionPurpose === p.id && styles.purposeTextActive]}>{p.label}</Text>
-                    <Text style={[styles.purposeDesc, sessionPurpose === p.id && styles.purposeTextActiveMuted]}>{p.desc}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {workoutType === 'strength' && exercises.length > 0 && (
-                <>
-                  <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Load Preview</Text>
-                  <View style={styles.loadPreview}>
-                    {selectedMuscles.map(mg => (
-                      <View key={mg} style={styles.loadPreviewRow}>
-                        <Text style={styles.loadPreviewBullet}>▸</Text>
-                        <Text style={styles.loadPreviewLabel}>{mg}</Text>
-                        <Text style={styles.loadPreviewVal}>+{calcPreview().toFixed(1)}</Text>
-                        <View style={styles.loadPreviewBar}>
-                          <View style={[styles.loadPreviewFill, { width: `${Math.min(calcPreview() * 2, 100)}%` }]} />
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                  <Text style={[styles.stepTitle, { marginTop: tokens.space.lg }]}>Exercises</Text>
-                  {exercises.filter(e => e.name.trim()).map((ex: any, i: number) => (
-                    <View key={i} style={styles.reviewEx}>
-                      <Text style={styles.reviewExName}>{ex.name}</Text>
-                      <Text style={styles.reviewExSets}>
-                        {ex.sets.map((s: any) => `${s.reps || 0}×${s.weight || 0}kg`).join(' · ')}
+              <Text style={styles.stepTitle}>Review & Save</Text>
+              <View style={styles.reviewCard}>
+                <Text style={styles.reviewIcon}>{WORKOUT_TYPES.find(t => t.id === workoutType)?.icon}</Text>
+                <View style={styles.reviewInfo}>
+                  <Text style={styles.reviewTitle}>{title || workoutType}</Text>
+                  <Text style={styles.reviewSub}>
+                    {dateStr} · {durMin} min · {entryMode === 'plan' ? targetDist : distanceKm} km
+                  </Text>
+                  {entryMode === 'plan' && (
+                    <View style={[styles.badge, { backgroundColor: tokens.color.warning + '20' }]}>
+                      <Text style={[styles.badgeText, { color: tokens.color.warning }]}>
+                        {sessionPurpose.toUpperCase()}
                       </Text>
                     </View>
-                  ))}
-                </>
-              )}
-
-              {workoutType !== 'strength' && (
-                <View style={{ marginTop: tokens.space.lg }}>
-                  <Text style={styles.stepTitle}>Load Preview</Text>
-                  <Text style={styles.noExNote}>Cardio load will be estimated from duration{distanceKm ? ' & distance' : ''}{avgHr ? ' & HR' : ''}.</Text>
+                  )}
                 </View>
-              )}
+              </View>
+
+              <Text style={[styles.stepTitle, { marginTop: tokens.space.xl }]}>Load Preview</Text>
+              <View style={styles.loadPreviewBox}>
+                <Text style={styles.loadVal}>
+                  +{Math.round(parseInt(durMin || '0') * (entryMode === 'plan' ? 0.8 : 0.6))}
+                </Text>
+                <Text style={styles.loadLabel}>Estimated AU Impact</Text>
+                <View style={styles.loadBarBg}>
+                  <View style={[styles.loadBarFill, { width: '65%' }]} />
+                </View>
+                <Text style={styles.loadHint}>This will be added to your acute load history.</Text>
+              </View>
             </View>
           )}
 
@@ -428,13 +431,13 @@ export default function AddWorkoutScreen() {
           <TouchableOpacity
             style={[styles.continueBtn, !canContinue() && styles.continueBtnDisabled]}
             onPress={() => {
-              if (step < 3) setStep(s => s + 1);
+              if (step < 4) setStep(s => s + 1);
               else handleSave();
             }}
             disabled={!canContinue() || saving}
           >
             <Text style={styles.continueBtnText}>
-              {saving ? 'Saving...' : step < 3 ? 'Continue →' : '💾 Save'}
+              {saving ? 'Saving...' : step < 4 ? 'Continue →' : '💾 Save'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -463,6 +466,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+  },
+  entryModeGrid: {
+    flexDirection: 'row',
+    gap: tokens.space.md,
+  },
+  modeCard: {
+    flex: 1,
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    padding: tokens.space.lg,
+    borderWidth: 2,
+    borderColor: tokens.color.border,
+    alignItems: 'center',
+  },
+  modeCardActive: {
+    borderColor: tokens.color.primary,
+    backgroundColor: tokens.color.primary + '10',
+  },
+  modeIcon: {
+    fontSize: 32,
+    marginBottom: tokens.space.sm,
+  },
+  modeTitle: {
+    fontSize: tokens.font.md,
+    fontWeight: 'bold',
+    color: tokens.color.textPrimary,
+  },
+  modeDesc: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    marginTop: 4,
+    textAlign: 'center',
   },
   typeCard: {
     width: '31%',
