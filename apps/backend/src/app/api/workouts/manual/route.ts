@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     const distanceM = body.distanceM ? Number(body.distanceM) : null;
     const avgHr = body.avgHr ? Number(body.avgHr) : null;
     const isPlanned = !!body.isPlanned;
+    const sessionPurpose = body.sessionPurpose ? String(body.sessionPurpose) : null;
     const exercises = body.exercises || [];
 
     if (!title || !startedAt || !durationSec) {
@@ -78,6 +79,7 @@ export async function POST(request: Request) {
         avgHr,
         isManual: true,
         isPlanned: !!isPlanned,
+        sessionPurpose: isPlanned ? (body.sessionPurpose || 'c-race') : null,
         exercises: workoutType === 'strength' && exercises && exercises.length > 0 ? {
           create: exercises.map((ex: any) => ({
             name: ex.name,

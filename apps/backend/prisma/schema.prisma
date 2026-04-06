@@ -71,6 +71,8 @@ model Workout {
   notes                String?
   isPlanned            Boolean            @default(false)
   isManual             Boolean            @default(false)
+  sessionPurpose       String?            // "b-race", "c-race", "training"
+  linkedWorkoutId      String?            // Links a planned race to a completed workout ( Strava, Hevy, etc)
   dedupeHash           String?            // To prevent duplicates across sources
   vdotAtTime           Float?             // VDOT value at the time of this workout
   rpe                  Int?               // Foster RPE (1-10)

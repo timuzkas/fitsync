@@ -104,12 +104,13 @@ export async function POST(request: NextRequest) {
           rpe = 5; // Default for strength per spec
 
           if (hevyData && (hevyData.legs > 0 || hevyData.upper > 0 || hevyData.core > 0)) {
+            // Use the standard strength load calculation with multipliers
             loadCalc = formatLoad({
               cardio: 0,
-              legs: hevyData.legs * 0.01 * (config.multipliers?.legs || 1),
-              upper: hevyData.upper * 0.01 * (config.multipliers?.upper || 1),
-              core: hevyData.core * 0.01 * (config.multipliers?.core || 1),
-              systemic: (hevyData.legs + hevyData.upper) * 0.002
+              legs: hevyData.legs * 0.001 * (config.multipliers?.legs || 1),
+              upper: hevyData.upper * 0.001 * (config.multipliers?.upper || 1),
+              core: hevyData.core * 0.001 * (config.multipliers?.core || 1),
+              systemic: (hevyData.legs + hevyData.upper + hevyData.core) * 0.0005 * (config.multipliers?.systemic || 1)
             });
             sourceDetail = { type: 'hevy_parsed', volume: hevyData };
           } else if (activity.calories > 0) {

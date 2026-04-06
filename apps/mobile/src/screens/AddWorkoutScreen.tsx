@@ -134,6 +134,7 @@ export default function AddWorkoutScreen() {
         notes: (notes || '') + (sessionPurpose !== 'training' ? `\n[Type: ${sessionPurpose.toUpperCase()}]` : ''),
         exercises: validExs,
         isPlanned: sessionPurpose !== 'training',
+        sessionPurpose: sessionPurpose !== 'training' ? sessionPurpose : undefined,
       });
       Alert.alert('Saved!', 'Workout added', [{ text: 'OK', onPress: () => navigation.goBack() }]);
     } catch (e: any) {

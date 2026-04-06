@@ -81,7 +81,8 @@ export const generateSmartPlan = (
   athlete: Athlete,
   config: PlanConfig,
   readinessScores: Record<string, number> = {},
-  temps: Record<string, number> = {}
+  temps: Record<string, number> = {},
+  plannedRaces: any[] = []
 ): { dailyPlan: DailyPlan[]; weeklyStats: any[] } => {
   const vdot = athlete.vdot || 40;
   
@@ -91,6 +92,15 @@ export const generateSmartPlan = (
   
   const aRaceDate = config.aRaceDate ? new Date(config.aRaceDate) : new Date(target.targetDate);
   aRaceDate.setHours(0, 0, 0, 0);
+  
+  // Build a map of race dates to avoid scheduling hard workouts nearby
+  const raceDates = new Map<string, { distance: number; priority: string }>();
+  for (const race of plannedRaces) {
+    const raceDate = new Date(race.date || race.startedAt);
+    raceDate.setHours(0, 0, 0, 0);
+    const key = raceDate.toISOString().split('T')[0];
+    raceDates.set(key, { distance: race.distance || 0, priority: race.racePriority || 'c-race' });
+  }
   
   const season = planSeason(aRaceDate, startDate);
   
@@ -131,6 +141,37 @@ export const generateSmartPlan = (
     const mobileWeekPlan: DailyPlan[] = weekPlan.map(dp => {
       const dayNum = dayCounter++;
       const dateObj = new Date(dp.date);
+      const dateKey = dp.date;
+      const raceInfo = raceDates.get(dateKey);
+      
+      // Check if this day is within 2 days of a planned race
+      let nearRace = false;
+      let raceAdjacent = false;
+      for (let offset = -2; offset <= 2; offset++) {
+        const checkDate = new Date(dateObj);
+        checkDate.setDate(checkDate.getDate() + offset);
+        const key = checkDate.toISOString().split('T')[0];
+        if (raceDates.has(key)) {
+          nearRace = true;
+          if (offset !== 0) raceAdjacent = true;
+        }
+      }
+      
+      // If race day, mark as race; if near race, make it easy
+      let finalType = dp.type;
+      let finalTitle = getTitle(dp);
+      let finalDesc = getDescription(dp);
+      
+      if (raceInfo) {
+        finalType = 'Race' as any;
+        finalTitle = '🏁 Race Day';
+        finalDesc = `${raceInfo.distance}km ${raceInfo.priority === 'b-race' ? 'B' : 'C'} race`;
+      } else if (raceAdjacent) {
+        finalType = 'Easy' as any;
+        finalTitle = `${finalTitle} (Near Race)`;
+        finalDesc = `Easy day - race nearby. ${finalDesc}`;
+      }
+      
       return {
         ...dp,
         date: dp.date,
@@ -140,10 +181,10 @@ export const generateSmartPlan = (
         targetDistanceKm: dp.distanceKm,
         targetDurationMin: dp.durationMin,
         targetPaceSecPerKm: dp.distanceKm > 0 ? (dp.durationMin * 60) / dp.distanceKm : 0,
-        title: getTitle(dp),
-        description: getDescription(dp),
+        title: finalTitle,
+        description: finalDesc,
         intensity: getIntensity(dp),
-        isTaper: phase.type === 'Taper'
+        isTaper: phase.type === 'Taper' || !!raceInfo
       };
     });
     

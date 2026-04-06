@@ -81,7 +81,18 @@ export const api = {
   async getWorkouts(deviceId: string, deviceSecret: string) {
     const res = await apiFetch('/api/workouts', { headers: headers(deviceId, deviceSecret) });
     if (!res.ok) throw new Error('Failed to fetch workouts');
-    return res.json();
+    const data = await res.json();
+    return data.workouts || data;
+  },
+
+  async getPlannedRaces(deviceId: string, deviceSecret: string) {
+    const res = await apiFetch('/api/workouts', { headers: headers(deviceId, deviceSecret) });
+    if (!res.ok) throw new Error('Failed to fetch workouts');
+    const data = await res.json();
+    return {
+      plannedRaces: data.plannedRaces || [],
+      availableWorkouts: data.availableWorkouts || [],
+    };
   },
 
   async deleteWorkout(deviceId: string, deviceSecret: string, id: string) {
@@ -92,6 +103,19 @@ export const api = {
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Delete failed');
+    }
+    return res.json();
+  },
+
+  async linkWorkoutToPlannedRace(deviceId: string, deviceSecret: string, plannedRaceId: string, linkedWorkoutId: string) {
+    const res = await apiFetch('/api/workouts', {
+      method: 'PATCH',
+      headers: headers(deviceId, deviceSecret),
+      body: JSON.stringify({ plannedRaceId, linkedWorkoutId }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Link failed');
     }
     return res.json();
   },

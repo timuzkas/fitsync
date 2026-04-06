@@ -29,6 +29,8 @@ export default function PlanScreen() {
 
   const [target, setTarget] = useState<TrainingTarget | null>(route.params?.target || storedTarget || null);
   const [workouts, setWorkouts] = useState<any[]>([]);
+  const [plannedRaces, setPlannedRaces] = useState<any[]>([]);
+  const [availableWorkouts, setAvailableWorkouts] = useState<any[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [saved, setSaved] = useState(false);
   const [readiness, setReadiness] = useState(0.7);
@@ -43,9 +45,63 @@ export default function PlanScreen() {
     }
   }, [target, setStoredTarget]);
 
+  const handleLinkRace = useCallback(async (race: any) => {
+    // Find workouts on or near the race date
+    const raceDate = new Date(race.startedAt);
+    const raceDateStr = raceDate.toISOString().split('T')[0];
+    
+    const nearbyWorkouts = availableWorkouts.filter((w: any) => {
+      const wDate = new Date(w.startedAt).toISOString().split('T')[0];
+      return wDate === raceDateStr;
+    });
+    
+    if (nearbyWorkouts.length === 0) {
+      Alert.alert('No workouts found', `No workout found on ${raceDate.toLocaleDateString()}. Run a workout that day or sync Strava first.`);
+      return;
+    }
+    
+    if (nearbyWorkouts.length === 1) {
+      // Auto-link if only one workout on that day
+      try {
+        await api.linkWorkoutToPlannedRace(deviceId, deviceSecret, race.id, nearbyWorkouts[0].id);
+        Alert.alert('Linked!', 'Planned race linked to your workout.');
+        // Refresh
+        api.getPlannedRaces(deviceId, deviceSecret).then(result => {
+          setPlannedRaces(result.plannedRaces || []);
+        }).catch(console.error);
+      } catch (e) {
+        Alert.alert('Error', 'Failed to link workout');
+      }
+    } else {
+      // Show picker if multiple workouts
+      const options = nearbyWorkouts.map((w: any) => w.title || w.type);
+      Alert.alert('Select Workout', 'Which workout should this race link to?', [
+        ...nearbyWorkouts.map((w: any, i: number) => ({
+          text: options[i],
+          onPress: async () => {
+            try {
+              await api.linkWorkoutToPlannedRace(deviceId, deviceSecret, race.id, w.id);
+              Alert.alert('Linked!', 'Planned race linked to your workout.');
+              api.getPlannedRaces(deviceId, deviceSecret).then(result => {
+                setPlannedRaces(result.plannedRaces || []);
+              }).catch(console.error);
+            } catch (e) {
+              Alert.alert('Error', 'Failed to link workout');
+            }
+          }
+        })),
+        { text: 'Cancel', style: 'cancel' }
+      ]);
+    }
+  }, [deviceId, deviceSecret, availableWorkouts]);
+
   useEffect(() => {
     if (deviceId && deviceSecret) {
       api.getWorkouts(deviceId, deviceSecret).then(setWorkouts).catch(console.error);
+      api.getPlannedRaces(deviceId, deviceSecret).then(result => {
+        setPlannedRaces(result.plannedRaces || []);
+        setAvailableWorkouts(result.availableWorkouts || []);
+      }).catch(console.error);
       api.getLoadToday(deviceId, deviceSecret)
         .then(data => { if (data?.readiness != null) setReadiness(data.readiness); })
         .catch(() => {});
@@ -87,7 +143,24 @@ export default function PlanScreen() {
     readinessScores[todayDateStr] = readiness;
     const temps: Record<string, number> = {};
     
-    const { dailyPlan: basePlan, weeklyStats } = generateSmartPlan(target, activities, athlete, config, readinessScores, temps);
+    // Only include future planned races - don't let them affect today's load/readiness
+    const futurePlannedRaces = plannedRaces.filter((r: any) => {
+      const raceDate = new Date(r.startedAt);
+      raceDate.setHours(0, 0, 0, 0);
+      return raceDate >= today;
+    });
+    
+    // Convert planned races to activities format for the planner
+    const plannedRaceActivities = futurePlannedRaces.map((r: any) => ({
+      date: new Date(r.startedAt),
+      distance: (r.distanceM || 0) / 1000,
+      duration: r.durationSec || 0,
+      hrAvg: r.avgHr || 140,
+      isRace: true,
+      racePriority: r.sessionPurpose || 'c-race',
+    }));
+    
+    const { dailyPlan: basePlan, weeklyStats } = generateSmartPlan(target, activities, athlete, config, readinessScores, temps, plannedRaceActivities);
 
     // Adapt plan based on most recent completed workout
     let dailyPlan = basePlan;
@@ -233,6 +306,40 @@ export default function PlanScreen() {
             </View>
           </View>
         </View>
+
+        {plannedRaces.length > 0 && (
+          <View style={styles.plannedRacesSection}>
+            <Text style={styles.plannedRacesTitle}>🏁 Upcoming Races</Text>
+            {plannedRaces.map((race: any) => {
+              const raceDate = new Date(race.startedAt);
+              const daysUntil = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+              const isPast = daysUntil < 0;
+              const isLinked = !!race.linkedWorkoutId;
+              const canLink = isPast && !isLinked && daysUntil > -30; // Can link within 30 days after race
+              
+              return (
+                <TouchableOpacity 
+                  key={race.id} 
+                  style={[styles.plannedRaceCard, isPast && styles.plannedRacePast]}
+                  onPress={() => canLink ? handleLinkRace(race) : undefined}
+                  disabled={!canLink}
+                >
+                  <View style={styles.plannedRaceInfo}>
+                    <Text style={styles.plannedRaceTitle}>{race.title}</Text>
+                    <Text style={styles.plannedRaceDate}>
+                      {raceDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} • {((race.distanceM || 0) / 1000).toFixed(1)} km
+                      {isLinked ? ' ✓ Linked' : ''}
+                      {canLink ? ' ↻ Link result' : ''}
+                    </Text>
+                  </View>
+                  <View style={[styles.priorityBadge, race.sessionPurpose === 'b-race' ? styles.badgeB : styles.badgeC]}>
+                    <Text style={styles.priorityBadgeText}>{race.sessionPurpose === 'b-race' ? 'B' : 'C'}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         {todayPlan && (
           <View style={styles.todayCard}>
@@ -554,4 +661,15 @@ const styles = StyleSheet.create({
   headerBtns: { flexDirection: 'row', gap: tokens.space.sm },
   headerSaveBtn: { fontSize: 20 },
   headerResetBtn: { fontSize: 18, marginLeft: tokens.space.xs },
+  plannedRacesSection: { padding: tokens.space.md, paddingTop: 0 },
+  plannedRacesTitle: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary, marginBottom: tokens.space.sm },
+  plannedRaceCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md, padding: tokens.space.md, marginBottom: tokens.space.sm, borderWidth: 1, borderColor: tokens.color.border },
+  plannedRacePast: { opacity: 0.5 },
+  plannedRaceInfo: { flex: 1 },
+  plannedRaceTitle: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
+  plannedRaceDate: { fontSize: tokens.font.sm, color: tokens.color.textMuted, marginTop: 2 },
+  priorityBadge: { paddingHorizontal: tokens.space.sm, paddingVertical: 4, borderRadius: tokens.radius.sm },
+  badgeB: { backgroundColor: tokens.color.warning + '30' },
+  badgeC: { backgroundColor: tokens.color.primary + '30' },
+  priorityBadgeText: { fontSize: tokens.font.xs, fontWeight: 'bold', color: tokens.color.textPrimary },
 });

@@ -28,17 +28,62 @@ export function parseHevyLog(description: string): HevyParseResult | null {
   let currentExercise: ParsedExercise | null = null;
 
   const muscleMap: Record<string, string[]> = {
-    legs: ['calf', 'toe', 'jump', 'squat', 'leg', 'lunges', 'deadlift', 'glute', 'hamstring', 'quad'],
-    upper: ['pull up', 'dip', 'press', 'row', 'curl', 'bench', 'pull', 'shoulder', 'farmer', 'tricep', 'bicep', 'chest', 'back', 'lat', 'handstand', 'pushup'],
-    core: ['abs', 'plank', 'crunch', 'core', 'oblique', 'hollow rock', 'twist']
+    legs: [
+      'calf', 'toe', 'jump', 'squat', 'leg', 'lunges', 'deadlift', 'glute', 'hamstring', 'quad',
+      'hip', 'thigh', 'front_raise', 'step_up', 'box_jump', 'lunge', 'single_leg', 'hip_thrust',
+      'goblet', 'bulgarian', 'hack', 'good_morning', 'rdl', 'romanian', 'calf_raise', 'leg_press',
+      'leg_extension', 'leg_curl', 'hip_adductor', 'hip_abductor', 'glute_bridge', 'step_up',
+      'pistol', 'shrimp', 'back_squat', 'front_squat', 'pause_squat', 'overhead_squat'
+    ],
+    upper: [
+      'pull up', 'pullup', 'pull-up', 'dip', 'dips', 'press', 'push press', 'overhead press',
+      'row', 'rowing', 'curl', 'curls', 'bench', 'pull', 'shoulder', 'farmer', 'tricep', 'triceps',
+      'bicep', 'biceps', 'chest', 'back', 'lat', 'handstand', 'pushup', 'push-up', 'push up',
+      'pullover', 'fly', 'raise', 'shrug', 'cg', '吊', '拉', '推', '弯举', '划船', '卧推',
+      'incline', 'decline', 'flat', 'dumbbell', 'barbell', 'cable', 'machine', 'smith',
+      'upright_row', 'face_pull', 'rear_delt', 'lateral_raise', 'front_raise', 'arnold',
+      'skull_crusher', 'extension', 'hammer', 'reverse_curl', 'wrist_curl'
+    ],
+    core: [
+      'abs', 'plank', 'crunch', 'core', 'oblique', 'hollow rock', 'hollow', 'twist', 'sit-up',
+      'situp', 'sit-up', 'mountain_climber', 'leg_raise', 'flutter_kick', 'bicycle',
+      'dead_bug', 'bird_dog', 'russian_twist', 'side_plank', 'deadlift', 'v-up', 'toes_to_bar',
+      'ab_wheel', 'pallof_press', 'cable_crunch', 'hanging_leg_raise', 'reverse_crunch',
+      'captain', 'tuck', 'pike', 'hollow_hold', 'l-sit', 'dragon_flag', 'burpee', 'pike_pushup'
+    ]
   };
 
   const getMuscleGroups = (name: string): string[] => {
     const lowerName = name.toLowerCase();
     const groups: string[] = [];
-    if (muscleMap.legs.some(k => lowerName.includes(k))) groups.push('legs');
-    if (muscleMap.upper.some(k => lowerName.includes(k))) groups.push('upper');
-    if (muscleMap.core.some(k => lowerName.includes(k))) groups.push('core');
+    
+    // Check each muscle group
+    for (const [group, keywords] of Object.entries(muscleMap)) {
+      if (keywords.some(k => lowerName.includes(k))) {
+        groups.push(group);
+      }
+    }
+    
+    // Special cases for compound movements
+    if (lowerName.includes('deadlift') || lowerName.includes('rdl') || lowerName.includes('romanian')) {
+      if (!groups.includes('legs')) groups.push('legs');
+      if (!groups.includes('upper')) groups.push('upper');
+      if (!groups.includes('core')) groups.push('core');
+    }
+    if (lowerName.includes('squat') || lowerName.includes('front_squat') || lowerName.includes('back_squat')) {
+      if (!groups.includes('legs')) groups.push('legs');
+      if (!groups.includes('core')) groups.push('core');
+    }
+    if (lowerName.includes('pushup') || lowerName.includes('push-up') || lowerName.includes('dip')) {
+      if (!groups.includes('upper')) groups.push('upper');
+    }
+    if (lowerName.includes('pullup') || lowerName.includes('pull-up') || lowerName.includes('row')) {
+      if (!groups.includes('upper')) groups.push('upper');
+    }
+    if (lowerName.includes('plank') || lowerName.includes('hollow') || lowerName.includes('crunch')) {
+      if (!groups.includes('core')) groups.push('core');
+    }
+    
     return groups.length > 0 ? groups : ['systemic'];
   };
 
@@ -109,21 +154,47 @@ export function parseHevyLog(description: string): HevyParseResult | null {
 
   for (const ex of exercises) {
     let exerciseVol = 0;
+    let hasWeight = false;
+    let hasReps = false;
+    let hasDuration = false;
+    
     for (const s of ex.sets) {
       if (s.weight > 0 && s.reps > 0) {
         exerciseVol += s.weight * s.reps;
+        hasWeight = true;
+        hasReps = true;
       } else if (s.reps > 0) {
-        // Bodyweight rep equivalent (e.g. 1 rep = 10kg volume)
-        exerciseVol += s.reps * 10;
+        // Bodyweight rep equivalent - more realistic multiplier
+        exerciseVol += s.reps * 4; // 4kg avg bodyweight equivalent per rep
+        hasReps = true;
       } else if (s.duration) {
-        // Time equivalent (e.g. 1s = 0.5kg volume)
-        exerciseVol += s.duration * 0.5;
+        // Time equivalent (e.g. 1s = 1kg volume for isometric/core work)
+        exerciseVol += s.duration * 1;
+        hasDuration = true;
       }
     }
 
-    if (ex.muscleGroups.includes('legs')) legsVol += exerciseVol;
-    if (ex.muscleGroups.includes('upper')) upperVol += exerciseVol;
-    if (ex.muscleGroups.includes('core')) coreVol += exerciseVol;
+    const mgs = ex.muscleGroups;
+    
+    // Core exercises need systemic too
+    if (mgs.includes('core')) {
+      coreVol += exerciseVol;
+      if (hasReps || hasDuration) coreVol += exerciseVol * 0.3; // Add systemic for core
+    }
+    if (mgs.includes('upper')) {
+      upperVol += exerciseVol;
+      if (hasReps || hasDuration) upperVol += exerciseVol * 0.2; // Systemic component
+    }
+    if (mgs.includes('legs')) {
+      legsVol += exerciseVol;
+    }
+    
+    // If no muscle group detected, treat as systemic
+    if (mgs.length === 0 || mgs.includes('systemic')) {
+      legsVol += exerciseVol * 0.5;
+      upperVol += exerciseVol * 0.3;
+      coreVol += exerciseVol * 0.2;
+    }
   }
 
   return {

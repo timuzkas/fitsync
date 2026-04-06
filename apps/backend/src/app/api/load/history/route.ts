@@ -28,6 +28,7 @@ export async function GET(request: Request) {
         where: {
           deviceInstallationId: installation.id,
           startedAt: { gte: dayStart, lt: dayEnd },
+          isPlanned: false, // Exclude planned races
         },
         include: { loadScore: true },
       });

@@ -25,7 +25,11 @@ export async function GET(request: Request) {
     const cutoff28 = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
 
     const workouts = await prisma.workout.findMany({
-      where: { deviceInstallationId: installation.id, startedAt: { gte: cutoff28 } },
+      where: { 
+        deviceInstallationId: installation.id, 
+        startedAt: { gte: cutoff28 },
+        isPlanned: false, // Exclude planned races from load calculations
+      },
       orderBy: { startedAt: 'desc' },
       include: { loadScore: true },
     });
