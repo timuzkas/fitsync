@@ -84,10 +84,14 @@ export const generateSmartPlan = (
   temps: Record<string, number> = {}
 ): { dailyPlan: DailyPlan[]; weeklyStats: any[] } => {
   const vdot = athlete.vdot || 40;
+  
+  // Use current system date for planning start
   const startDate = new Date();
   startDate.setHours(0, 0, 0, 0);
   
-  const aRaceDate = config.aRaceDate || new Date(target.targetDate);
+  const aRaceDate = config.aRaceDate ? new Date(config.aRaceDate) : new Date(target.targetDate);
+  aRaceDate.setHours(0, 0, 0, 0);
+  
   const season = planSeason(aRaceDate, startDate);
   
   // Add 2 weeks of recovery after the race if targetDate is reached
@@ -187,30 +191,33 @@ export const adaptPlanAfterNewWorkout = (
       }
     }
 
-    // 2. Readiness Trimming (Section 5.1): If readiness is critical (< 20 or 0), 
-    // we should downgrade or flag sessions.
+    // 2. Readiness Trimming (Section 5.1): Apply ONLY to the immediate next session (Today/Tomorrow)
     const readiness = readinessScores[todayStr] ?? 100;
+    const diffTime = dayDate.getTime() - today.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     
-    if (readiness < 30) {
-      // If it's a Quality session and readiness is 0, we flag it as risky
+    // Only adapt the immediate horizon (Today = 0, Tomorrow = 1)
+    // We don't touch Day 2+ because readiness will likely have recovered by then
+    if (readiness < 30 && diffDays >= 0 && diffDays <= 1) {
       if (day.type === 'Quality') {
         return {
           ...day,
           title: `⚠️ ${day.title} (High Risk)`,
-          description: `Readiness is low (${readiness.toFixed(0)}%). Consider downgrading to Easy or Resting.`,
+          description: `Current readiness is ${readiness.toFixed(0)}%. Reference 5.1.10: Manual review recommended.`,
           intensity: 'high' as any
         };
       }
       
-      // Reduce Easy/Long run volume by 30-50% if readiness is low
       if (day.type === 'Easy' || day.type === 'Long') {
-        const reduction = readiness < 10 ? 0.5 : 0.8;
+        // Section 5.1.9: Reduce volume proportionally
+        // We apply a steeper cut today (0.6) than tomorrow (0.8)
+        const reduction = diffDays === 0 ? 0.6 : 0.8;
         return {
           ...day,
-          title: `${day.title} (Reduced)`,
+          title: `${day.title} (Adjusted)`,
           distanceKm: Math.round(day.distanceKm * reduction * 10) / 10,
           durationMin: Math.round(day.durationMin * reduction),
-          description: `Volume reduced due to low readiness score.`
+          description: `Volume trimmed per ACWR safety rule (Readiness: ${readiness.toFixed(0)}%).`
         };
       }
     }

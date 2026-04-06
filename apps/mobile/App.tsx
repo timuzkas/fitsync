@@ -4,7 +4,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   RefreshControl, Alert, ActivityIndicator
 } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { enableScreens } from 'react-native-screens';
@@ -176,19 +176,21 @@ function HomeScreen({ navigation }: any) {
             <Text style={styles.planCardArrow}>→</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity 
-            style={styles.planCard}
-            onPress={() => navigation.navigate('Settings')}
-          >
-            <View style={styles.planCardIcon}>
-              <Text style={styles.planCardIconText}>🏃</Text>
-            </View>
-            <View style={styles.planCardContent}>
-              <Text style={styles.planCardTitle}>Set Your Running Goal</Text>
-              <Text style={styles.planCardSub}>Create a training plan for your next race</Text>
-            </View>
-            <Text style={styles.planCardArrow}>→</Text>
-          </TouchableOpacity>
+          <View>
+            <TouchableOpacity 
+              style={styles.planCard}
+              onPress={() => navigation.navigate('Target')}
+            >
+              <View style={styles.planCardIcon}>
+                <Text style={styles.planCardIconText}>🏃</Text>
+              </View>
+              <View style={styles.planCardContent}>
+                <Text style={styles.planCardTitle}>Set Your Running Goal</Text>
+                <Text style={styles.planCardSub}>Create a training plan for your next race</Text>
+              </View>
+              <Text style={styles.planCardArrow}>→</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         <View style={styles.sectionHeader}>
@@ -343,6 +345,22 @@ const styles = StyleSheet.create({
   planCardTitle: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
   planCardSub: { fontSize: tokens.font.xs, color: tokens.color.textMuted, marginTop: 2 },
   planCardArrow: { fontSize: tokens.font.lg, color: tokens.color.textMuted },
+  secondarySettingsBtn: {
+    alignSelf: 'center',
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    marginTop: -tokens.space.xs,
+    marginBottom: tokens.space.md,
+  },
+  secondarySettingsText: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textSecondary,
+    fontWeight: '600',
+  },
 });
 
 export default function App() {
@@ -398,7 +416,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <NavigationContainer>
+      <NavigationContainer theme={DarkTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: tokens.color.bg } }}>
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="AddWorkout" component={AddWorkoutScreen} />

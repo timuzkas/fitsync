@@ -30,16 +30,17 @@ const DAYS = [
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { deviceId, deviceSecret, athleteProfile, setAthleteProfile } = useDeviceStore();
+  const { deviceId, deviceSecret, athleteProfile, setAthleteProfile, planConfig, setPlanConfig, target } = useDeviceStore();
 
-  const [freeDays, setFreeDays] = useState<string[]>([]);
+  const [freeDays, setFreeDays] = useState<string[]>(planConfig?.freeDays || ['mon', 'wed', 'fri']);
   const [maxHR, setMaxHR] = useState(athleteProfile?.maxHR?.toString() || '');
   const [restHR, setRestHR] = useState(athleteProfile?.restHR?.toString() || '');
 
   useEffect(() => {
     if (athleteProfile?.maxHR) setMaxHR(athleteProfile.maxHR.toString());
     if (athleteProfile?.restHR) setRestHR(athleteProfile.restHR.toString());
-  }, [athleteProfile]);
+    if (planConfig?.freeDays) setFreeDays(planConfig.freeDays);
+  }, [athleteProfile, planConfig]);
 
   function toggleDay(dayId: string) {
     setFreeDays(prev =>
@@ -78,7 +79,14 @@ export default function SettingsScreen() {
       Alert.alert('Select Training Days', 'Pick at least one day you can run.');
       return;
     }
-    navigation.navigate('Target', { planConfig: { freeDays } });
+    
+    const newConfig = {
+      ...(planConfig || { weeklyTargetKm: 30, longRunTargetKm: 12, sessionsPerWeek: 3 }),
+      freeDays
+    };
+    
+    setPlanConfig(newConfig);
+    navigation.goBack();
   }
 
   function resetDevice() {
@@ -132,6 +140,26 @@ export default function SettingsScreen() {
             <Text style={{ color: '#ef4444', fontSize: tokens.font.sm, fontWeight: '600' }}>Reset</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Training Target section */}
+        <Text style={styles.sectionLabel}>TRAINING GOAL</Text>
+
+        <TouchableOpacity
+          style={styles.rowCard}
+          onPress={() => navigation.navigate('Target')}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.rowIcon, { backgroundColor: tokens.color.primary }]}>
+            <Text style={styles.rowIconText}>🎯</Text>
+          </View>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowTitle}>Race Target</Text>
+            <Text style={styles.rowSub}>
+              {target ? `${target.distanceKm}K on ${new Date(target.targetDate).toLocaleDateString()}` : 'Set your race date and distance'}
+            </Text>
+          </View>
+          <Text style={styles.rowArrow}>›</Text>
+        </TouchableOpacity>
 
         {/* Connections section */}
         <Text style={styles.sectionLabel}>CONNECTIONS</Text>
@@ -248,7 +276,7 @@ export default function SettingsScreen() {
           onPress={savePlanSettings}
           activeOpacity={0.85}
         >
-          <Text style={styles.continueBtnText}>Continue to Target →</Text>
+          <Text style={styles.continueBtnText}>Save & Close</Text>
         </TouchableOpacity>
       </View>
     </View>

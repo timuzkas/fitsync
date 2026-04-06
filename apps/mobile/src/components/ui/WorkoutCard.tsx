@@ -151,6 +151,43 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
             </View>
           )}
 
+          {(workout?.notes || workout?.sufferScore) && (
+            <View style={styles.detailSection}>
+              <Text style={styles.sectionTitle}>Session Info</Text>
+              {workout.sufferScore != null && (
+                <View style={styles.sufferRow}>
+                  <Text style={styles.sufferLabel}>Relative Effort</Text>
+                  <Text style={styles.sufferValue}>{workout.sufferScore}</Text>
+                </View>
+              )}
+              {workout.notes && (
+                <Text style={styles.notesText}>{workout.notes}</Text>
+              )}
+            </View>
+          )}
+
+          {workout?.exercises && workout.exercises.length > 0 && (
+            <View style={styles.detailSection}>
+              <Text style={styles.sectionTitle}>Exercises</Text>
+              <View style={styles.exerciseList}>
+                {workout.exercises.map((ex: any, idx: number) => (
+                  <View key={ex.id || idx} style={styles.exerciseItem}>
+                    <Text style={styles.exerciseName}>{ex.name}</Text>
+                    <View style={styles.setGrid}>
+                      {(ex.sets || []).map((s: any, si: number) => (
+                        <View key={si} style={styles.setChip}>
+                          <Text style={styles.setText}>
+                            {s.reps}<Text style={styles.setUnit}>×</Text>{s.weight}<Text style={styles.setUnit}>kg</Text>
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
           {onDelete && (
             <TouchableOpacity
               onPress={() => onDelete(workout?.id)}
@@ -361,6 +398,70 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: tokens.color.textPrimary,
+  },
+  sufferRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: tokens.color.elevated,
+    paddingHorizontal: tokens.space.sm,
+    paddingVertical: 8,
+    borderRadius: tokens.radius.sm,
+    marginBottom: 6,
+  },
+  sufferLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: tokens.color.textSecondary,
+  },
+  sufferValue: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: tokens.color.warning,
+  },
+  notesText: {
+    fontSize: tokens.font.sm,
+    color: tokens.color.textSecondary,
+    fontStyle: 'italic',
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  exerciseList: {
+    gap: tokens.space.sm,
+  },
+  exerciseItem: {
+    backgroundColor: tokens.color.elevated,
+    borderRadius: tokens.radius.sm,
+    padding: tokens.space.sm,
+  },
+  exerciseName: {
+    fontSize: tokens.font.sm,
+    fontWeight: '700',
+    color: tokens.color.textPrimary,
+    marginBottom: 6,
+  },
+  setGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  setChip: {
+    backgroundColor: tokens.color.surface,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  setText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: tokens.color.textSecondary,
+  },
+  setUnit: {
+    fontSize: 9,
+    color: tokens.color.textMuted,
+    fontWeight: '400',
   },
   dangerZone: {
     marginTop: tokens.space.md,

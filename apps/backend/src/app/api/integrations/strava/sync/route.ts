@@ -18,60 +18,7 @@ import {
   calculateSessionLoad 
 } from '../../../../../../../../packages/shared/training';
 
-/**
- * PARSER: Extracts muscle-group volume from Hevy's text format
- */
-function parseHevyLog(description: string) {
-  if (!description || !description.includes('Logged with Hevy')) return null;
-
-  const lines = description.split('\n');
-  let legsVol = 0;
-  let upperVol = 0;
-  let coreVol = 0;
-
-  const muscleMap = {
-    legs: ['calf', 'toe', 'jump', 'squat', 'leg', 'lunges', 'deadlift', 'glute', 'hamstring', 'quad'],
-    upper: ['press', 'row', 'curl', 'bench', 'pull', 'shoulder', 'farmer', 'tricep', 'bicep', 'chest', 'back', 'lat'],
-    core: ['abs', 'plank', 'crunch', 'core', 'oblique']
-  };
-
-  let currentMuscle: 'legs' | 'upper' | 'core' | null = null;
-
-  for (const line of lines) {
-    const cleanLine = line.trim().toLowerCase();
-    if (!cleanLine) continue;
-
-    // 1. Detect Exercise Name and assign Muscle Group
-    if (!cleanLine.startsWith('set') && !cleanLine.includes('logged with')) {
-      currentMuscle = null;
-      if (muscleMap.legs.some(k => cleanLine.includes(k))) currentMuscle = 'legs';
-      else if (muscleMap.upper.some(k => cleanLine.includes(k))) currentMuscle = 'upper';
-      else if (muscleMap.core.some(k => cleanLine.includes(k))) currentMuscle = 'core';
-    }
-
-    // 2. Parse Weight-based sets: "Set 1: 24 kg x 15"
-    const weightMatch = cleanLine.match(/set \d+: (\d+(\.\d+)?) kg x (\d+)/);
-    if (weightMatch && currentMuscle) {
-      const volume = parseFloat(weightMatch[1]) * parseInt(weightMatch[3]);
-      if (currentMuscle === 'legs') legsVol += volume;
-      if (currentMuscle === 'upper') upperVol += volume;
-      if (currentMuscle === 'core') coreVol += volume;
-    }
-
-    // 3. Parse Duration/BW-only sets: "Set 1: 32s" or "Set 1: 15 reps"
-    const durationMatch = cleanLine.match(/set \d+: (\d+)(s| reps)/);
-    if (durationMatch && currentMuscle) {
-      const val = parseInt(durationMatch[1]);
-      // Assign arbitrary volume for bodyweight/time (e.g. 1 rep = 5kg volume equivalent)
-      const volume = val * 5; 
-      if (currentMuscle === 'legs') legsVol += volume;
-      if (currentMuscle === 'upper') upperVol += volume;
-      if (currentMuscle === 'core') coreVol += volume;
-    }
-  }
-
-  return { legs: legsVol, upper: upperVol, core: coreVol };
-}
+import { parseHevyLog } from '@/lib/parsers/hevy';
 
 export async function POST(request: NextRequest) {
   const deviceId = request.headers.get('x-device-id');
@@ -149,9 +96,11 @@ export async function POST(request: NextRequest) {
         let loadCalc;
         let sourceDetail: any = null;
         let rpe = suggestRpeFromHrZone(200, activity.average_heartrate || 120); // Fallback maxHr=200
+        let hevyResult = null;
 
         if (workoutType === 'strength') {
-          const hevyData = parseHevyLog(activity.description || "");
+          hevyResult = parseHevyLog(activity.description || "");
+          const hevyData = hevyResult?.volume;
           rpe = 5; // Default for strength per spec
 
           if (hevyData && (hevyData.legs > 0 || hevyData.upper > 0 || hevyData.core > 0)) {
@@ -213,7 +162,15 @@ export async function POST(request: NextRequest) {
             startedAt: new Date(activity.start_date),
             distanceM: activity.distance,
             rpe,
-            vdotAtTime: currentVdot
+            vdotAtTime: currentVdot,
+            exercises: hevyResult?.exercises ? {
+              deleteMany: {},
+              create: hevyResult.exercises.map(ex => ({
+                name: ex.name,
+                muscleGroups: ex.muscleGroups,
+                sets: ex.sets as any
+              }))
+            } : undefined
           },
           create: {
             deviceInstallationId: installation.id,
@@ -227,7 +184,14 @@ export async function POST(request: NextRequest) {
             startedAt: new Date(activity.start_date),
             distanceM: activity.distance,
             rpe,
-            vdotAtTime: currentVdot
+            vdotAtTime: currentVdot,
+            exercises: hevyResult?.exercises ? {
+              create: hevyResult.exercises.map(ex => ({
+                name: ex.name,
+                muscleGroups: ex.muscleGroups,
+                sets: ex.sets as any
+              }))
+            } : undefined
           },
         });
 

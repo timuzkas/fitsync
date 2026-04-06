@@ -118,8 +118,8 @@ export function planWeek(
     days.push(d);
   }
 
-  // 1. Identify available days
-  const availableIndices = availableIndicesFromDays(availableDays);
+  // 1. Identify available days relative to startDate
+  const availableIndices = availableIndicesFromDays(availableDays, startDate);
   
   // 2. Determine Quality Sessions based on Phase
   const qualitySessions: { zone: keyof typeof VDOT_COEFFS; distance: number }[] = [];
@@ -277,7 +277,10 @@ function createSession(date: Date, type: DayPlan['type'], zone: keyof typeof VDO
   };
 }
 
-function availableIndicesFromDays(availableDays: number[]): number[] {
-  // Convert [0,1,2] to indices where 0 is the start of the week provided
-  return availableDays.sort((a, b) => a - b);
+function availableIndicesFromDays(availableDays: number[], startDate: Date): number[] {
+  const startDay = startDate.getDay();
+  // Map absolute days (0=Sun, 1=Mon...) to relative indices [0..6] from startDate
+  return availableDays
+    .map(day => (day - startDay + 7) % 7)
+    .sort((a, b) => a - b);
 }

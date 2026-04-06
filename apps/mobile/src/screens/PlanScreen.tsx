@@ -115,7 +115,13 @@ export default function PlanScreen() {
 
   const todayPlan = dailyPlan.find(d => d.dayNum === 1);
   const tomorrowPlan = dailyPlan.find(d => d.dayNum === 2);
-  const upcomingPlanRaw = dailyPlan.slice(expanded ? undefined : 3);
+  
+  // The 'Upcoming' list should always start from Day 3 (index 2) to avoid 
+  // repeating Today (Day 1) and Tomorrow (Day 2) which are shown at the top.
+  const upcomingPlanRaw = expanded 
+    ? dailyPlan.slice(2) 
+    : dailyPlan.slice(2, 5); // Show next 3 days when collapsed (Day 3, 4, 5)
+
   const upcomingPlan = hideRestDays ? upcomingPlanRaw.filter(d => d.type !== 'Rest') : upcomingPlanRaw;
 
   const formatPace = (sec: number) => {
@@ -163,6 +169,9 @@ export default function PlanScreen() {
           <Text style={styles.emptySub}>Set a race goal to generate your training plan</Text>
           <TouchableOpacity style={styles.setTargetBtn} onPress={() => navigation.navigate('Target')}>
             <Text style={styles.setTargetBtnText}>Set Target</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secondarySettingsBtn} onPress={() => navigation.navigate('Settings')}>
+            <Text style={styles.secondarySettingsText}>⚙ Settings</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -532,6 +541,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xl, paddingVertical: tokens.space.md,
   },
   setTargetBtnText: { color: '#fff', fontSize: tokens.font.md, fontWeight: 'bold' },
+  secondarySettingsBtn: {
+    marginTop: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+  },
+  secondarySettingsText: {
+    color: tokens.color.textSecondary,
+    fontSize: tokens.font.sm,
+    fontWeight: '600',
+  },
   headerBtns: { flexDirection: 'row', gap: tokens.space.sm },
   headerSaveBtn: { fontSize: 20 },
   headerResetBtn: { fontSize: 18, marginLeft: tokens.space.xs },
