@@ -29,8 +29,24 @@ export async function GET(request: Request) {
       where: { deviceInstallationId: installation.id, isPlanned: true },
       orderBy: { startedAt: 'asc' },
       take: 20,
-      include: { exercises: true, loadScore: true, workout: true },
+      include: { exercises: true, loadScore: true },
     });
+
+    // Fetch linked workouts for planned races
+    const linkedWorkoutIds = plannedRaces.filter(p => p.linkedWorkoutId).map(p => p.linkedWorkoutId);
+    const linkedWorkoutsMap = new Map();
+    if (linkedWorkoutIds.length > 0) {
+      const linkedWorkouts = await prisma.workout.findMany({
+        where: { id: { in: linkedWorkoutIds } },
+        select: { id: true, title: true, type: true, startedAt: true, distanceM: true, durationSec: true },
+      });
+      linkedWorkouts.forEach(w => linkedWorkoutsMap.set(w.id, w));
+    }
+
+    const plannedRacesWithLinks = plannedRaces.map(p => ({
+      ...p,
+      workout: p.linkedWorkoutId ? linkedWorkoutsMap.get(p.linkedWorkoutId) : null,
+    }));
 
     // Get completed workouts that could be linked to planned races (for the last 30 days)
     const availableWorkouts = await prisma.workout.findMany({
@@ -44,7 +60,7 @@ export async function GET(request: Request) {
       select: { id: true, title: true, type: true, startedAt: true, distanceM: true, durationSec: true },
     });
 
-    return NextResponse.json({ workouts, plannedRaces, availableWorkouts });
+    return NextResponse.json({ workouts, plannedRaces: plannedRacesWithLinks, availableWorkouts });
   } catch (error: any) {
     console.error('Fetch workouts error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
