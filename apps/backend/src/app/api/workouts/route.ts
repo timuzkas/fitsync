@@ -29,7 +29,7 @@ export async function GET(request: Request) {
       where: { deviceInstallationId: installation.id, isPlanned: true },
       orderBy: { startedAt: 'asc' },
       take: 20,
-      include: { exercises: true, loadScore: true },
+      include: { exercises: true, loadScore: true, workout: true },
     });
 
     // Get completed workouts that could be linked to planned races (for the last 30 days)

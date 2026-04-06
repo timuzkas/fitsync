@@ -45,27 +45,104 @@ export default function PlanScreen() {
     }
   }, [target, setStoredTarget]);
 
+  const formatDuration = (sec: number) => {
+    if (!sec) return '--';
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
   const handleLinkRace = useCallback(async (race: any) => {
-    // Find workouts on or near the race date
     const raceDate = new Date(race.startedAt);
-    const raceDateStr = raceDate.toISOString().split('T')[0];
+    const raceDateTime = raceDate.getTime();
     
+    const formatDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    
+    const formatWorkout = (w: any) => {
+      const wDate = new Date(w.startedAt);
+      const diff = Math.round((wDate.getTime() - raceDateTime) / (1000 * 60 * 60 * 24));
+      const diffStr = diff === 0 ? 'same day' : diff > 0 ? `+${diff}d` : `${diff}d`;
+      const dist = w.distanceM ? `${(w.distanceM / 1000).toFixed(1)}km` : '';
+      const dur = w.durationSec ? formatDuration(w.durationSec) : '';
+      const parts = [w.title || w.type, dist, dur, diffStr].filter(Boolean);
+      return parts.join(' • ');
+    };
+
+    const isAlreadyLinked = !!race.workoutId;
+
+    if (isAlreadyLinked) {
+      Alert.alert(
+        'Already Linked',
+        `This planned workout is linked to "${race.workout?.title || race.workout?.type || 'workout'}".`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Change Link',
+            onPress: () => {
+              const nearbyWorkouts = availableWorkouts.filter((w: any) => {
+                const wDate = new Date(w.startedAt);
+                const diffDays = Math.abs(wDate.getTime() - raceDateTime) / (1000 * 60 * 60 * 24);
+                return diffDays <= 5;
+              });
+              if (nearbyWorkouts.length === 0) {
+                Alert.alert('No workouts found', 'No workout found within 5 days of planned date.');
+                return;
+              }
+              const options = nearbyWorkouts.map(formatWorkout);
+              Alert.alert('Select Workout', 'Which workout should this race link to?', [
+                ...nearbyWorkouts.map((w: any, i: number) => ({
+                  text: options[i],
+                  onPress: async () => {
+                    try {
+                      await api.linkWorkoutToPlannedRace(deviceId, deviceSecret, race.id, w.id);
+                      Alert.alert('Linked!', 'Planned race linked to your workout.');
+                      api.getPlannedRaces(deviceId, deviceSecret).then(result => {
+                        setPlannedRaces(result.plannedRaces || []);
+                      }).catch(console.error);
+                    } catch (e) {
+                      Alert.alert('Error', 'Failed to link workout');
+                    }
+                  }
+                })),
+                { text: 'Cancel', style: 'cancel' }
+              ]);
+            }
+          },
+          {
+            text: 'Unlink',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await api.linkWorkoutToPlannedRace(deviceId, deviceSecret, race.id, null);
+                Alert.alert('Unlinked', 'Workout link removed.');
+                api.getPlannedRaces(deviceId, deviceSecret).then(result => {
+                  setPlannedRaces(result.plannedRaces || []);
+                }).catch(console.error);
+              } catch (e) {
+                Alert.alert('Error', 'Failed to unlink workout');
+              }
+            }
+          }
+        ]
+      );
+      return;
+    }
+
     const nearbyWorkouts = availableWorkouts.filter((w: any) => {
-      const wDate = new Date(w.startedAt).toISOString().split('T')[0];
-      return wDate === raceDateStr;
+      const wDate = new Date(w.startedAt);
+      const diffDays = Math.abs(wDate.getTime() - raceDateTime) / (1000 * 60 * 60 * 24);
+      return diffDays <= 5;
     });
     
     if (nearbyWorkouts.length === 0) {
-      Alert.alert('No workouts found', `No workout found on ${raceDate.toLocaleDateString()}. Run a workout that day or sync Strava first.`);
+      Alert.alert('No workouts found', `No workout found within 5 days of ${formatDate(raceDate)}. Run a workout or sync Strava first.`);
       return;
     }
     
     if (nearbyWorkouts.length === 1) {
-      // Auto-link if only one workout on that day
       try {
         await api.linkWorkoutToPlannedRace(deviceId, deviceSecret, race.id, nearbyWorkouts[0].id);
         Alert.alert('Linked!', 'Planned race linked to your workout.');
-        // Refresh
         api.getPlannedRaces(deviceId, deviceSecret).then(result => {
           setPlannedRaces(result.plannedRaces || []);
         }).catch(console.error);
@@ -73,8 +150,7 @@ export default function PlanScreen() {
         Alert.alert('Error', 'Failed to link workout');
       }
     } else {
-      // Show picker if multiple workouts
-      const options = nearbyWorkouts.map((w: any) => w.title || w.type);
+      const options = nearbyWorkouts.map(formatWorkout);
       Alert.alert('Select Workout', 'Which workout should this race link to?', [
         ...nearbyWorkouts.map((w: any, i: number) => ({
           text: options[i],
@@ -189,6 +265,17 @@ export default function PlanScreen() {
 
   const todayPlan = dailyPlan.find(d => d.dayNum === 1);
   const tomorrowPlan = dailyPlan.find(d => d.dayNum === 2);
+  
+  const getPlannedRaceForDay = (day: any) => {
+    if (!day?.date) return null;
+    const d = new Date(day.date);
+    const dayDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return plannedRaces.find((r: any) => {
+      const rd = new Date(r.startedAt);
+      const rdStr = `${rd.getFullYear()}-${String(rd.getMonth() + 1).padStart(2, '0')}-${String(rd.getDate()).padStart(2, '0')}`;
+      return rdStr === dayDateStr;
+    });
+  };
   
   // The 'Upcoming' list should always start from Day 3 (index 2) to avoid 
   // repeating Today (Day 1) and Tomorrow (Day 2) which are shown at the top.
@@ -308,8 +395,43 @@ export default function PlanScreen() {
           </View>
         </View>
 
-        {todayPlan && (
-          <View style={styles.todayCard}>
+        {todayPlan && (() => {
+          const plannedOnDay = getPlannedRaceForDay(todayPlan);
+          const isLinked = plannedOnDay?.workoutId;
+          const linkedWorkout = plannedOnDay?.workout;
+          return (
+          <TouchableOpacity style={styles.todayCard} onPress={() => {
+            const plannedOnDay = getPlannedRaceForDay(todayPlan);
+            if (plannedOnDay) {
+              Alert.alert(
+                plannedOnDay.title || 'Planned Workout',
+                `${formatDate(plannedOnDay.startedAt)}${
+                  plannedOnDay.distanceM
+                    ? ` • ${(plannedOnDay.distanceM / 1000).toFixed(1)}km`
+                    : ''
+                }`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: plannedOnDay }) },
+                  { text: 'Link to Completed', onPress: () => handleLinkRace(plannedOnDay) },
+                  {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await api.deleteWorkout(deviceId, deviceSecret, plannedOnDay.id);
+                        api.getPlannedRaces(deviceId, deviceSecret).then(result => {
+                          setPlannedRaces(result.plannedRaces || []);
+                        });
+                      } catch (e) {
+                        Alert.alert('Error', 'Failed to delete');
+                      }
+                    }
+                  },
+                ]
+              );
+            }
+          }}>
             <View style={styles.todayBadge}>
               <Text style={styles.todayBadgeText}>TODAY</Text>
             </View>
@@ -329,10 +451,21 @@ export default function PlanScreen() {
                         <Text style={styles.taperBadgeText}>↓ TAPER</Text>
                       </View>
                     )}
+                    {isLinked && (
+                      <View style={styles.linkedBadge}>
+                        <Text style={styles.linkedBadgeText}>✓ DONE</Text>
+                      </View>
+                    )}
                     {todayPlan.rpe > 0 && (
                       <Text style={styles.rpeText}>RPE: {todayPlan.rpe}</Text>
                     )}
                   </View>
+                  {isLinked && linkedWorkout && (
+                    <Text style={styles.linkedWorkoutText}>
+                      {linkedWorkout.distanceM ? `${(linkedWorkout.distanceM/1000).toFixed(1)}km` : ''} 
+                      {linkedWorkout.durationSec ? ` • ${formatDuration(linkedWorkout.durationSec)}` : ''}
+                    </Text>
+                  )}
                   <Text style={styles.todayDesc}>{todayPlan.description}</Text>
                 </View>
               </View>
@@ -351,17 +484,46 @@ export default function PlanScreen() {
                       <Text style={styles.todayMetricValue}>{formatPace(todayPlan.targetPaceSecPerKm)}</Text>
                       <Text style={styles.todayMetricLabel}>pace</Text>
                     </View>
+                    {plannedOnDay && (
+                      <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
+                        <Text style={styles.dayMetricHint}>Tap for actions ›</Text>
+                      </View>
+                    )}
                   </>
                 ) : (
                   <Text style={styles.restLabel}>Rest Day</Text>
                 )}
               </View>
             </View>
-          </View>
-        )}
+          </TouchableOpacity>
+          );
+        })()}
 
-        {tomorrowPlan && (
-          <View style={styles.tomorrowCard}>
+        {tomorrowPlan && (() => {
+          const plannedOnDay = getPlannedRaceForDay(tomorrowPlan);
+          return (
+          <TouchableOpacity style={styles.tomorrowCard} onPress={() => {
+            const p = getPlannedRaceForDay(tomorrowPlan);
+            if (p) {
+              Alert.alert(
+                p.title || 'Planned Workout',
+                `${formatDate(p.startedAt)}${
+                  p.distanceM ? ` • ${(p.distanceM / 1000).toFixed(1)}km` : ''
+                }`,
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: p }) },
+                  { text: 'Link to Completed', onPress: () => handleLinkRace(p) },
+                  { text: 'Delete', style: 'destructive', onPress: async () => {
+                    try {
+                      await api.deleteWorkout(deviceId, deviceSecret, p.id);
+                      api.getPlannedRaces(deviceId, deviceSecret).then(result => setPlannedRaces(result.plannedRaces || []));
+                    } catch (e) { Alert.alert('Error', 'Failed to delete'); }
+                  }},
+                ]
+              );
+            }
+          }}>
             <View style={styles.tomorrowBadge}>
               <Text style={styles.tomorrowBadgeText}>TOMORROW</Text>
             </View>
@@ -382,10 +544,14 @@ export default function PlanScreen() {
                 ) : (
                   <Text style={styles.restLabel}>Rest</Text>
                 )}
+                {plannedOnDay && (
+                  <Text style={styles.dayMetricHint}>Tap for actions ›</Text>
+                )}
               </View>
             </View>
-          </View>
-        )}
+          </TouchableOpacity>
+          );
+        })()}
 
         {upcomingPlan.length > 0 && (
           <>
@@ -604,7 +770,7 @@ const styles = StyleSheet.create({
   tomorrowInfo: { flex: 1 },
   tomorrowTitle: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
   tomorrowDesc: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
-  tomorrowMetrics: { flexDirection: 'row', gap: tokens.space.sm },
+  tomorrowMetrics: { flexDirection: 'row', gap: tokens.space.sm, alignItems: 'center', flex: 1 },
   tomorrowMetric: { fontSize: tokens.font.sm, color: tokens.color.textSecondary },
 
   upcomingHeader: {
@@ -666,6 +832,22 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: 'bold',
     color: tokens.color.accent,
+  },
+  linkedBadge: {
+    backgroundColor: tokens.color.success + '20',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  linkedBadgeText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: tokens.color.success,
+  },
+  linkedWorkoutText: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.success,
+    marginTop: 2,
   },
   raceBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   raceBadgeText: { fontSize: 9, fontWeight: 'bold', color: '#fff' },
