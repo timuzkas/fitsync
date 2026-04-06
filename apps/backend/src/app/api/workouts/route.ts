@@ -143,22 +143,33 @@ export async function PATCH(request: Request) {
     }
 
     // Handle planned race linking
-    if (!plannedRaceId || !linkedWorkoutId) {
-      return NextResponse.json({ error: 'Missing plannedRaceId or linkedWorkoutId' }, { status: 400 });
+    if (!plannedRaceId) {
+      return NextResponse.json({ error: 'Missing plannedRaceId' }, { status: 400 });
     }
 
-    // Verify both workouts belong to this device
+    // Verify planned race belongs to this device
     const plannedRace = await prisma.workout.findFirst({
       where: { id: plannedRaceId, deviceInstallationId: installation.id, isPlanned: true },
-    });
-
-    const linkedWorkout = await prisma.workout.findFirst({
-      where: { id: linkedWorkoutId, deviceInstallationId: installation.id },
     });
 
     if (!plannedRace) {
       return NextResponse.json({ error: 'Planned race not found' }, { status: 404 });
     }
+
+    // Handle unlinking (when linkedWorkoutId is null)
+    if (linkedWorkoutId === null) {
+      const updated = await prisma.workout.update({
+        where: { id: plannedRaceId },
+        data: { linkedWorkoutId: null },
+        include: { exercises: true, loadScore: true },
+      });
+      return NextResponse.json(updated);
+    }
+
+    // Handle linking to a workout
+    const linkedWorkout = await prisma.workout.findFirst({
+      where: { id: linkedWorkoutId, deviceInstallationId: installation.id },
+    });
 
     if (!linkedWorkout) {
       return NextResponse.json({ error: 'Workout to link not found' }, { status: 404 });

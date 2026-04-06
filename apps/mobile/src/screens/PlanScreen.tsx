@@ -68,7 +68,7 @@ export default function PlanScreen() {
       return parts.join(' • ');
     };
 
-    const isAlreadyLinked = !!race.workoutId;
+    const isAlreadyLinked = !!race.linkedWorkoutId;
 
     if (isAlreadyLinked) {
       Alert.alert(
@@ -397,7 +397,7 @@ export default function PlanScreen() {
 
         {todayPlan && (() => {
           const plannedOnDay = getPlannedRaceForDay(todayPlan);
-          const isLinked = plannedOnDay?.workoutId;
+          const isLinked = !!plannedOnDay?.linkedWorkoutId;
           const linkedWorkout = plannedOnDay?.workout;
           return (
           <TouchableOpacity style={styles.todayCard} onPress={() => {
@@ -501,6 +501,7 @@ export default function PlanScreen() {
 
         {tomorrowPlan && (() => {
           const plannedOnDay = getPlannedRaceForDay(tomorrowPlan);
+          const isLinked = !!plannedOnDay?.linkedWorkoutId;
           return (
           <TouchableOpacity style={styles.tomorrowCard} onPress={() => {
             const p = getPlannedRaceForDay(tomorrowPlan);
