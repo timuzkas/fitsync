@@ -410,8 +410,63 @@ export default function PlanScreen() {
               </TouchableOpacity>
             </View>
 
-            {upcomingPlan.map((day, idx) => (
-              <View key={day.date} style={styles.dayCard}>
+            {upcomingPlan.map((day, idx) => {
+              const d = new Date(day.date);
+              const dayDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              const plannedOnDay = plannedRaces.find((r: any) => {
+                const rd = new Date(r.startedAt);
+                const rdStr = `${rd.getFullYear()}-${String(rd.getMonth() + 1).padStart(2, '0')}-${String(rd.getDate()).padStart(2, '0')}`;
+                return rdStr === dayDateStr;
+              });
+              
+              return (
+                <TouchableOpacity 
+                    key={day.date.toString()}
+                    style={[
+                      styles.dayCard,
+                      (plannedOnDay || day.isRaceDay) && styles.dayCardClickable
+                    ]}
+                    onPress={() => {
+                      if (plannedOnDay) {
+                        Alert.alert(
+                          plannedOnDay.title || 'Planned Workout',
+                          `${formatDate(plannedOnDay.startedAt)}${
+                            plannedOnDay.distanceM
+                              ? ` • ${(plannedOnDay.distanceM / 1000).toFixed(1)}km`
+                              : ''
+                          }`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: plannedOnDay }) },
+                            { text: 'Link to Completed', onPress: () => handleLinkRace(plannedOnDay) },
+                            {
+                              text: 'Delete',
+                              style: 'destructive',
+                              onPress: async () => {
+                                try {
+                                  await api.deleteWorkout(deviceId, deviceSecret, plannedOnDay.id);
+                                  api.getPlannedRaces(deviceId, deviceSecret).then(result => {
+                                    setPlannedRaces(result.plannedRaces || []);
+                                  });
+                                } catch (e) {
+                                  Alert.alert('Error', 'Failed to delete');
+                                }
+                              }
+                            },
+                          ]
+                        );
+                      } else if (day.isRaceDay) {
+                        Alert.alert(
+                          `Race Day: ${day.title}`,
+                          `${day.dayOfWeek}, ${formatDate(day.date)}\n\n${day.description || 'Race day - tap to add a planned workout'}`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            { text: 'Add Workout', onPress: () => navigation.navigate('AddWorkout', { presetDate: day.date }) },
+                          ]
+                        );
+                      }
+                    }}
+                  >
                 <View style={styles.dayHeader}>
                   <View>
                     <Text style={styles.dayName}>{day.dayOfWeek}, {formatDate(day.date)}</Text>
@@ -458,60 +513,15 @@ export default function PlanScreen() {
                     <View style={styles.dayMetric}>
                       <Text style={styles.dayMetricValue}>{formatPace(day.targetPaceSecPerKm)}</Text>
                     </View>
+                    <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'center' }}>
+                      <Text style={styles.dayMetricHint}>Tap for actions ›</Text>
+                    </View>
                   </View>
                 )}
-              </View>
-            ))}
-          </>
-        )}
-
-        {plannedRaces.length > 0 && (
-          <View style={styles.plannedRacesSection}>
-            <Text style={styles.plannedRacesTitle}>Planned Workouts</Text>
-            {plannedRaces.map((race: any) => {
-              const raceDate = new Date(race.startedAt);
-              const isPast = raceDate < today;
-              return (
-                <TouchableOpacity
-                  key={race.id}
-                  style={[styles.plannedRaceCard, isPast && styles.plannedRacePast]}
-                  onPress={() => {
-                    Alert.alert(
-                      race.title || 'Planned Workout',
-                      `${formatDate(race.startedAt)}${race.distanceM ? ` • ${(race.distanceM/1000).toFixed(1)}km` : ''}`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: race }) },
-                        { text: 'Link to Completed', onPress: () => handleLinkRace(race) },
-                        { text: 'Delete', style: 'destructive', onPress: async () => {
-                          try {
-                            await api.deleteWorkout(deviceId, deviceSecret, race.id);
-                            api.getPlannedRaces(deviceId, deviceSecret).then(result => {
-                              setPlannedRaces(result.plannedRaces || []);
-                            });
-                          } catch (e) { Alert.alert('Error', 'Failed to delete'); }
-                        }},
-                      ]
-                    );
-                  }}
-                >
-                  <View style={styles.plannedRaceInfo}>
-                    <Text style={styles.plannedRaceTitle}>{race.title || 'Planned Workout'}</Text>
-                    <Text style={styles.plannedRaceDate}>
-                      {formatDate(race.startedAt)}
-                      {race.distanceM && ` • ${(race.distanceM/1000).toFixed(1)}km`}
-                      {race.targetTimeSec && ` • ${Math.round(race.targetTimeSec/60)}min`}
-                    </Text>
-                  </View>
-                  <View style={[styles.priorityBadge, race.sessionPurpose === 'b-race' ? styles.badgeB : styles.badgeC]}>
-                    <Text style={styles.priorityBadgeText}>
-                      {race.sessionPurpose === 'b-race' ? 'B' : race.isPlanned ? 'C' : '•'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+              </TouchableOpacity>
               );
             })}
-          </View>
+          </>
         )}
 
         <View style={{ height: 120 }} />
@@ -633,6 +643,15 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md,
     padding: tokens.space.md, marginBottom: tokens.space.sm, borderWidth: 1, borderColor: tokens.color.border,
   },
+  dayCardClickable: {
+    borderColor: tokens.color.primary,
+    borderWidth: 1.5,
+    shadowColor: tokens.color.primary,
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
   dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: tokens.space.sm },
   dayName: { fontSize: tokens.font.sm, color: tokens.color.textMuted },
   dayNum: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
@@ -661,7 +680,8 @@ const styles = StyleSheet.create({
   dayMetrics: { flexDirection: 'row', gap: tokens.space.md, marginTop: tokens.space.sm, paddingTop: tokens.space.sm, borderTopWidth: 1, borderTopColor: tokens.color.border },
   dayMetric: {},
   dayMetricValue: { fontSize: tokens.font.sm, color: tokens.color.textSecondary },
-
+  dayMetricHint: { fontSize: tokens.font.xs, color: tokens.color.textMuted, opacity: 0.7 },
+	
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: tokens.space.xl },
   emptyIcon: { fontSize: 64, marginBottom: tokens.space.md },
   emptyTitle: { fontSize: tokens.font.xl, fontWeight: 'bold', color: tokens.color.textPrimary, marginBottom: tokens.space.xs },

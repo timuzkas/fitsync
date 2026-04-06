@@ -236,7 +236,13 @@ function HomeScreen({ navigation }: any) {
                     `${new Date(w.startedAt).toLocaleDateString()}${w.distanceM ? ` • ${(w.distanceM/1000).toFixed(1)}km` : ''}`,
                     [
                       { text: 'Cancel', style: 'cancel' },
-                      { text: 'View Plan', onPress: () => navigation.navigate('Plan') },
+                      { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: w }) },
+                      { text: 'Delete', style: 'destructive', onPress: async () => {
+                        try {
+                          await api.deleteWorkout(deviceId, deviceSecret, w.id);
+                          fetchPlanned();
+                        } catch (e) { Alert.alert('Error', 'Failed to delete'); }
+                      }},
                     ]
                   );
                 }}
