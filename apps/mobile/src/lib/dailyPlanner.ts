@@ -29,6 +29,9 @@ export interface DailyPlan extends SharedDayPlan {
   description: string;
   intensity: 'rest' | 'low' | 'medium' | 'high';
   isTaper: boolean;
+  // Race info
+  isRaceDay: boolean;
+  racePriority: string | null;
   // Fields for PlanScreen compatibility
   dayNum: number;
   dayOfWeek: string;
@@ -144,33 +147,51 @@ export const generateSmartPlan = (
       const dateKey = dp.date;
       const raceInfo = raceDates.get(dateKey);
       
-      // Check if this day is within 2 days of a planned race
-      let nearRace = false;
-      let raceAdjacent = false;
-      for (let offset = -2; offset <= 2; offset++) {
+      // Check if this day is within 3 days of a B race (critical window)
+      let bRaceNear = false;
+      let cRaceNear = false;
+      for (let offset = -3; offset <= 3; offset++) {
         const checkDate = new Date(dateObj);
         checkDate.setDate(checkDate.getDate() + offset);
         const key = checkDate.toISOString().split('T')[0];
-        if (raceDates.has(key)) {
-          nearRace = true;
-          if (offset !== 0) raceAdjacent = true;
+        const nearbyRace = raceDates.get(key);
+        if (nearbyRace) {
+          if (nearbyRace.priority === 'b-race') bRaceNear = true;
+          else cRaceNear = true;
         }
       }
       
-      // If race day, mark as race; if near race, make it easy
+      // If race day, show as race
       let finalType = dp.type;
       let finalTitle = getTitle(dp);
       let finalDesc = getDescription(dp);
+      let finalDistance = dp.distanceKm;
+      let finalDuration = dp.durationMin;
       
       if (raceInfo) {
         finalType = 'Race' as any;
         finalTitle = '🏁 Race Day';
         finalDesc = `${raceInfo.distance}km ${raceInfo.priority === 'b-race' ? 'B' : 'C'} race`;
-      } else if (raceAdjacent) {
+        finalDistance = raceInfo.distance;
+        finalDuration = Math.round(raceInfo.distance * (target.distanceKm > 10 ? 6 : 5.5)); // rough estimate
+      } else if (bRaceNear && dp.type === 'Quality') {
+        // B race nearby: reduce quality session to easier session
         finalType = 'Easy' as any;
-        finalTitle = `${finalTitle} (Near Race)`;
-        finalDesc = `Easy day - race nearby. ${finalDesc}`;
+        finalTitle = `Easy (B race prep)`;
+        finalDesc = `Reduced load before B race. ${finalDesc}`;
+        finalDistance = Math.round(finalDistance * 0.6); // 60% of planned
+        finalDuration = Math.round(finalDuration * 0.6);
+      } else if (bRaceNear && dp.type === 'Long') {
+        // Reduce long run before B race
+        finalDistance = Math.round(finalDistance * 0.7);
+        finalDuration = Math.round(finalDuration * 0.7);
+        finalTitle = `${finalTitle} (tapered)`;
+      } else if (bRaceNear && dp.type === 'Easy' && dp.distanceKm > 5) {
+        // Trim easy runs during B race week
+        finalDistance = Math.round(finalDistance * 0.8);
+        finalDuration = Math.round(finalDuration * 0.8);
       }
+      // C race: no changes needed per the reference
       
       return {
         ...dp,
@@ -178,13 +199,15 @@ export const generateSmartPlan = (
         dayNum,
         dayOfWeek: dateObj.toLocaleDateString('en-US', { weekday: 'short' }),
         vdotZone: dp.zone || 'E',
-        targetDistanceKm: dp.distanceKm,
-        targetDurationMin: dp.durationMin,
-        targetPaceSecPerKm: dp.distanceKm > 0 ? (dp.durationMin * 60) / dp.distanceKm : 0,
+        targetDistanceKm: finalDistance,
+        targetDurationMin: finalDuration,
+        targetPaceSecPerKm: finalDistance > 0 ? (finalDuration * 60) / finalDistance : 0,
         title: finalTitle,
         description: finalDesc,
         intensity: getIntensity(dp),
-        isTaper: phase.type === 'Taper' || !!raceInfo
+        isTaper: phase.type === 'Taper' || !!raceInfo,
+        isRaceDay: !!raceInfo,
+        racePriority: raceInfo?.priority || null
       };
     });
     

@@ -307,40 +307,6 @@ export default function PlanScreen() {
           </View>
         </View>
 
-        {plannedRaces.length > 0 && (
-          <View style={styles.plannedRacesSection}>
-            <Text style={styles.plannedRacesTitle}>🏁 Upcoming Races</Text>
-            {plannedRaces.map((race: any) => {
-              const raceDate = new Date(race.startedAt);
-              const daysUntil = Math.ceil((raceDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-              const isPast = daysUntil < 0;
-              const isLinked = !!race.linkedWorkoutId;
-              const canLink = isPast && !isLinked && daysUntil > -30; // Can link within 30 days after race
-              
-              return (
-                <TouchableOpacity 
-                  key={race.id} 
-                  style={[styles.plannedRaceCard, isPast && styles.plannedRacePast]}
-                  onPress={() => canLink ? handleLinkRace(race) : undefined}
-                  disabled={!canLink}
-                >
-                  <View style={styles.plannedRaceInfo}>
-                    <Text style={styles.plannedRaceTitle}>{race.title}</Text>
-                    <Text style={styles.plannedRaceDate}>
-                      {raceDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} • {((race.distanceM || 0) / 1000).toFixed(1)} km
-                      {isLinked ? ' ✓ Linked' : ''}
-                      {canLink ? ' ↻ Link result' : ''}
-                    </Text>
-                  </View>
-                  <View style={[styles.priorityBadge, race.sessionPurpose === 'b-race' ? styles.badgeB : styles.badgeC]}>
-                    <Text style={styles.priorityBadgeText}>{race.sessionPurpose === 'b-race' ? 'B' : 'C'}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-
         {todayPlan && (
           <View style={styles.todayCard}>
             <View style={styles.todayBadge}>
@@ -451,6 +417,11 @@ export default function PlanScreen() {
                     <Text style={styles.dayNum}>Day {day.dayNum}</Text>
                   </View>
                   <View style={styles.badgeRow}>
+                    {day.isRaceDay && (
+                      <View style={[styles.raceBadge, day.racePriority === 'b-race' ? styles.badgeB : styles.badgeC]}>
+                        <Text style={styles.raceBadgeText}>🏁 {day.racePriority === 'b-race' ? 'B' : 'C'}</Text>
+                      </View>
+                    )}
                     {day.isTaper && (
                       <View style={styles.taperBadge}>
                         <Text style={styles.taperBadgeText}>↓ TAPER</Text>
@@ -627,6 +598,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: tokens.color.accent,
   },
+  raceBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  raceBadgeText: { fontSize: 9, fontWeight: 'bold', color: '#fff' },
   dayTypeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   dayTypeText: { fontSize: 9, fontWeight: 'bold' },
   dayContent: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm },
