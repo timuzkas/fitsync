@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 3000",
-    "build": "npx next build",
+    "dev": "npx prisma generate --schema=prisma/schema.prisma && next dev -H 0.0.0.0 -p 3000",
+    "prisma:generate": "prisma generate",
+    "build": "npx prisma generate --schema=prisma/schema.prisma && npx next build",
     "start": "next start",
     "lint": "next lint"
   },

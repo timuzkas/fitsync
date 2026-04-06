@@ -69,13 +69,13 @@ model Workout {
   sufferScore          Float?
   title                String?
   notes                String?
+  rpe                  Int?      // Rate of Perceived Exertion (1-10)
+  vdotAtTime           Float?    // VDOT score at time of workout
   isPlanned            Boolean            @default(false)
   isManual             Boolean            @default(false)
   sessionPurpose       String?            // "b-race", "c-race", "training"
-  linkedWorkoutId      String?            // Links a planned race to a completed workout ( Strava, Hevy, etc)
+  linkedWorkoutId      String?            // Links a planned race to a completed workout
   dedupeHash           String?            // To prevent duplicates across sources
-  vdotAtTime           Float?             // VDOT value at the time of this workout
-  rpe                  Int?               // Foster RPE (1-10)
   
   exercises            StrengthExercise[]
   loadScore            LoadScore?
