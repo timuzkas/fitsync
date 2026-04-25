@@ -21,7 +21,7 @@ export interface HevyParseResult {
 }
 
 /**
- * Section 14: Muscular Stress Load (MSL) Calculation
+ * Section 14: Muscular Stress Load (MSL) Calculation.
  */
 export function calculateSessionMSL(
   exercises: Array<{ name: string; sets: Array<{ reps: number; weight: number; rpe?: number }> }>,
@@ -37,8 +37,8 @@ export function calculateSessionMSL(
     const systemicCoeff = getSystemicCoefficient(ex.name);
 
     for (const set of ex.sets) {
-      const weightBonus = 1 + (set.weight / 70); // Normalized to 70kg
-      const rpeFactor = (set.rpe || 7) / 10; // RPE factor 0-1
+      const weightBonus = 1 + (set.weight / 60);
+      const rpeFactor = (set.rpe || 7) / 5.0;
 
       const volumeFactor = set.reps * weightBonus * rpeFactor;
 

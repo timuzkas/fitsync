@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { calculateSessionLoad } from '../../../../../../../packages/shared/training';
 
 export async function GET(request: Request) {
   const deviceId = String(request.headers.get('x-device-id') || '');
@@ -127,19 +128,38 @@ export async function PATCH(request: Request) {
     const body = await request.json();
     const { plannedRaceId, linkedWorkoutId, rpe } = body;
 
-    // Handle RPE update
+    // Handle RPE update — also recalculates Foster session load in LoadScore
     if (rpe !== undefined && linkedWorkoutId) {
       const workout = await prisma.workout.findFirst({
         where: { id: linkedWorkoutId, deviceInstallationId: installation.id },
+        include: { loadScore: true },
       });
       if (!workout) {
         return NextResponse.json({ error: 'Workout not found' }, { status: 404 });
       }
-      const updated = await prisma.workout.update({
-        where: { id: linkedWorkoutId },
-        data: { rpe: Math.max(1, Math.min(10, rpe)) },
-      });
-      return NextResponse.json(updated);
+      const clampedRpe = Math.max(1, Math.min(10, rpe));
+      const durationMin = workout.durationSec / 60;
+      const sessionLoad = calculateSessionLoad(clampedRpe, durationMin);
+
+      const [updated] = await prisma.$transaction([
+        prisma.workout.update({
+          where: { id: linkedWorkoutId },
+          data: { rpe: clampedRpe },
+        }),
+        prisma.loadScore.upsert({
+          where: { workoutId: linkedWorkoutId },
+          update: { systemic: sessionLoad },
+          create: {
+            workoutId: linkedWorkoutId,
+            cardio: workout.loadScore?.cardio ?? 0,
+            legs: workout.loadScore?.legs ?? 0,
+            upper: workout.loadScore?.upper ?? 0,
+            core: workout.loadScore?.core ?? 0,
+            systemic: sessionLoad,
+          },
+        }),
+      ]);
+      return NextResponse.json({ ...updated, sessionLoad });
     }
 
     // Handle planned race linking

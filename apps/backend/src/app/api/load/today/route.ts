@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
   calc7dLoad, calc28dLoad, formatLoad,
-  calcReadiness, sumLoads, DEFAULT_CONFIG, LoadConfig
+  calculateReadinessV2, sumLoads, DEFAULT_CONFIG, LoadConfig
 } from '@/lib/load';
 
 export async function GET(request: Request) {
@@ -38,14 +38,16 @@ export async function GET(request: Request) {
     const load28d = formatLoad(calc28dLoad(workouts, now, config));
     const current = formatLoad(sumLoads([load7d]));
 
-    const readiness = calcReadiness(
-      current.cardio,
-      current.legs,
-      current.upper,
-      current.core,
-      current.systemic,
-      config
-    );
+    const cutoff7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const last7DaysSessions = workouts
+      .filter((w: any) => new Date(w.startedAt) >= cutoff7)
+      .map((w: any) => ({
+        load: (w.rpe || 5) * (w.durationSec / 60),
+        durationMin: w.durationSec / 60,
+        date: new Date(w.startedAt),
+      }));
+    const lastWorkoutDate = workouts.length > 0 ? new Date(workouts[0].startedAt) : null;
+    const readiness = calculateReadinessV2(last7DaysSessions, now, lastWorkoutDate);
 
     const recentWorkouts = workouts.slice(0, 10).map((w: any) => ({
       id: w.id,

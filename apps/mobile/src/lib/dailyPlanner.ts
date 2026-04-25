@@ -1,6 +1,5 @@
 
 /**
- * dailyPlanner.ts — Mobile-side Training Plan Generator
  * Bridges shared algorithms with mobile-specific types and UI needs.
  */
 
@@ -294,29 +293,49 @@ export const adaptPlanAfterNewWorkout = (
       };
     }
 
-    // 2. Readiness Trimming (Section 5.1)
+    // 2. Readiness Trimming (Section 5.1 + §13 bands)
     const readiness = readinessScores[todayStr] ?? 100;
     const diffTime = dayDate.getTime() - today.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (readiness < 30 && diffDays >= 0 && diffDays <= 1) {
+
+    // Orange (40–54): Easy/active recovery only — downgrade Quality, trim volume
+    // Red (0–39):     Rest — deeper trim
+    if (readiness < 55 && diffDays >= 0 && diffDays <= 1) {
       if (day.type === 'Quality') {
+        if (readiness < 40) {
+          // Orange/red: force Quality → Easy
+          const paceSec = getZonePace(athlete.vdot || 40, 'E');
+          return {
+            ...day,
+            type: 'Easy' as any,
+            zone: 'E' as any,
+            title: 'Easy Run (Low Readiness)',
+            description: `Downgraded from quality — readiness ${readiness.toFixed(0)}% (orange/red zone).`,
+            targetPaceSecPerKm: paceSec,
+            targetDurationMin: Math.round((day.targetDistanceKm * paceSec) / 60),
+            intensity: 'low' as any,
+          };
+        }
+        // Yellow (40–54): warn only, keep session
         return {
           ...day,
-          title: `⚠️ ${day.title} (High Risk)`,
-          description: `Current readiness is ${readiness.toFixed(0)}%. Manual review recommended.`,
-          intensity: 'high' as any
+          title: `⚠️ ${day.title} (Low Readiness)`,
+          description: `Readiness ${readiness.toFixed(0)}% — consider reducing intensity.`,
+          intensity: 'high' as any,
         };
       }
-      
+
       if (day.type === 'Easy' || day.type === 'Long') {
-        const reduction = diffDays === 0 ? 0.6 : 0.8;
+        // Red: 60% today / 80% tomorrow; Orange: 85%
+        const reduction = readiness < 40
+          ? (diffDays === 0 ? 0.6 : 0.8)
+          : 0.85;
         return {
           ...day,
           title: `${day.title} (Adjusted)`,
           distanceKm: Math.round(day.distanceKm * reduction * 10) / 10,
           durationMin: Math.round(day.durationMin * reduction),
-          description: `Volume trimmed per ACWR safety rule (Readiness: ${readiness.toFixed(0)}%).`
+          description: `Volume trimmed — readiness ${readiness.toFixed(0)}%.`,
         };
       }
     }

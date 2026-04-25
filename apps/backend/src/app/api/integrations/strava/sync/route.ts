@@ -69,8 +69,15 @@ export async function POST(request: NextRequest) {
     const existingMap = new Map(existingWorkouts.map(w => [w.externalId, w]));
 
     // 5. Parallelize processing of activities
-    let currentVdot = installation.vdot || 40;
-    let vdotUpdated = false;
+    const currentVdot = installation.vdot || 40;
+
+    // Fetch athlete's observed max HR once before the parallel loop
+    const maxHrRecord = await prisma.workout.findFirst({
+      where: { deviceInstallationId: installation.id, maxHr: { not: null } },
+      orderBy: { maxHr: 'desc' },
+      select: { maxHr: true },
+    });
+    const athleteMaxHr = maxHrRecord?.maxHr || 190;
 
     const syncTasks = stravaActivities.map(async (summaryActivity: any) => {
       const externalId = `strava-${summaryActivity.id}`;
@@ -89,7 +96,8 @@ export async function POST(request: NextRequest) {
       }
 
       const workoutType = mapStravaToWorkoutType(summaryActivity.type);
-      
+      let candidateVdot: number | undefined;
+
       try {
         const activity = await fetchDetailedStravaActivity(dataSource.accessToken!, summaryActivity.id);
         
@@ -108,8 +116,8 @@ export async function POST(request: NextRequest) {
           // Running with HR data - use HR zone based suggestion
           rpe = suggestRpeFromHrZone(activity.max_heartrate, activity.average_heartrate);
         } else if (activity.average_heartrate) {
-          // Has avg HR but not max - use 200 as fallback
-          rpe = suggestRpeFromHrZone(200, activity.average_heartrate);
+          // Has avg HR but not max — use athlete's historical peak as fallback
+          rpe = suggestRpeFromHrZone(athleteMaxHr, activity.average_heartrate);
         } else {
           // No HR data - default based on activity type
           rpe = workoutType === 'run' ? 5 : 5;
@@ -122,7 +130,7 @@ export async function POST(request: NextRequest) {
           rpe = 5; // Default for strength per spec
 
           if (hevyData && (hevyData.legs > 0 || hevyData.upper > 0 || hevyData.core > 0)) {
-            // Use the standard strength load calculation with multipliers
+            // Use the standard strength load calculation with multipliers.
             loadCalc = formatLoad({
               cardio: 0,
               legs: hevyData.legs * 0.001 * (config.multipliers?.legs || 1),
@@ -161,12 +169,10 @@ export async function POST(request: NextRequest) {
           sourceDetail = { type: 'cardio' };
 
           // VDOT UPDATE TRIGGER (Spec 4.2) - use moving_time for pace-based VDOT
+          // Return candidate rather than mutating shared state (race condition fix)
           if (workoutType === 'run' && activity.distance >= 3000 && rpe >= 7) {
-            const newVdot = calculateVdot(activity.distance, activity.moving_time / 60);
-            if (newVdot > currentVdot) {
-              currentVdot = newVdot;
-              vdotUpdated = true;
-            }
+            const computed = calculateVdot(activity.distance, activity.moving_time / 60);
+            if (computed > currentVdot) candidateVdot = computed;
           }
         }
 
@@ -223,19 +229,23 @@ export async function POST(request: NextRequest) {
           create: { workoutId: workout.id, ...loadCalc, sourceDetail },
         });
 
-        return { status: 'imported' };
+        return { status: 'imported', candidateVdot };
       } catch (e) {
         console.error(`Failed to sync activity ${summaryActivity.id}:`, e);
-        return { status: 'failed' };
+        return { status: 'failed', candidateVdot: undefined };
       }
     });
 
     const results = await Promise.all(syncTasks);
 
-    if (vdotUpdated) {
+    const bestVdot = results.reduce(
+      (best, r) => (r.candidateVdot && r.candidateVdot > best ? r.candidateVdot : best),
+      currentVdot
+    );
+    if (bestVdot > currentVdot) {
       await prisma.deviceInstallation.update({
         where: { id: installation.id },
-        data: { vdot: currentVdot }
+        data: { vdot: bestVdot }
       });
     }
     stats.imported = results.filter(r => r.status === 'imported').length;

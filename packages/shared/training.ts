@@ -1,7 +1,7 @@
 
 /**
  * DANIELS VDOT & FOSTER RPE LOAD ALGORITHMS
- * Source: Daniels' Running Formula & Foster RPE-based load model
+ * Source: Daniels' Running Formula & Foster RPE-based load model.
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,5 +191,6 @@ export function suggestRpeFromHrZone(maxHr: number, avgHr: number): number {
   if (pct < 0.85) return 6; // Zone 3
   if (pct < 0.90) return 7; // Zone 4 (lower)
   if (pct < 0.95) return 8; // Zone 4 (upper)
-  return 9; // Zone 5
+  if (pct < 0.98) return 9; // Zone 5 (lower)
+  return 10;                 // Zone 5 (upper)
 }

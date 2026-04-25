@@ -2,7 +2,7 @@
 import { getZonePace, VDOT_COEFFS, calculateDanielsPoints, calculateEquivalentKm } from './training';
 import { Athlete, PointsHistoryEntry, AdaptiveState } from './index';
 
-export type RaceType = 'A' | 'B' | 'C' | 'D'; // D = Trail Race
+export type RaceType = 'A' | 'B' | 'C' | 'D'; // D = Trail Race.
 
 export interface Race {
   name: string;
@@ -62,17 +62,18 @@ export function evaluateAdaptiveLevel(athlete: Athlete): {
 
   // 10.1 Step Up / Step Down (3 consecutive weeks)
   const last3Weeks = history.slice(-3);
+  let reason: string | undefined;
   if (last3Weeks.length === 3) {
     if (last3Weeks.every(h => h.actual >= h.target)) {
       newTarget = Math.round(currentTarget * 1.1);
-      reason: 'consistent_overperformance';
+      reason = 'consistent_overperformance';
     } else if (last3Weeks.every(h => h.actual < h.target)) {
       newTarget = Math.round(currentTarget * 0.9);
-      reason: 'consistent_underperformance';
+      reason = 'consistent_underperformance';
     }
   }
 
-  return { newTarget, newState };
+  return { newTarget, newState, reason };
 }
 
 /**
