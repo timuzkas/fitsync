@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { calculateSessionLoad } from '../../../../../../../packages/shared/training';
+import { calculateSessionLoad } from '../../../../../../packages/shared/training';
 
 export async function GET(request: Request) {
   const deviceId = String(request.headers.get('x-device-id') || '');
