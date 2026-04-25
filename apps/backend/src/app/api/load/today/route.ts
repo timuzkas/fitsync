@@ -51,7 +51,6 @@ export async function GET(request: Request) {
     const readiness = calculateReadinessV2(last7DaysSessions, now, lastWorkoutDate);
 
     // §15 Leg Muscular Risk + Total Body Fatigue from Hevy strength sessions
-    const cutoff7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const strengthSessions = workouts
       .filter((w: any) => w.type === 'strength' && w.exercises?.length > 0 && new Date(w.startedAt) >= cutoff7)
       .map((w: any) => {
