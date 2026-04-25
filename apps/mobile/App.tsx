@@ -164,11 +164,10 @@ function HomeScreen({ navigation }: any) {
     );
   }
 
-  const current = loadData?.current || { cardio: 0, legs: 0, upper: 0, core: 0, systemic: 0 };
   const history7d = loadData?.recentWorkouts
     ?.slice(0, 7)
     ?.reverse()
-    ?.map((w: any) => w.loadScore ? (w.loadScore.cardio + w.loadScore.legs + w.loadScore.upper + w.loadScore.core + w.loadScore.systemic) : 0) || [];
+    ?.map((w: any) => (w.rpe && w.durationSec) ? Math.round(w.rpe * (w.durationSec / 60)) : 0) || [];
 
   return (
     <View style={styles.container}>
@@ -214,11 +213,12 @@ function HomeScreen({ navigation }: any) {
         {loadData && (
           <LoadDashboard
             readiness={loadData.readiness || 0}
-            current={current}
             load7d={loadData.load7d ? Object.values(loadData.load7d).reduce((a: number, b: any) => a + b, 0) : 0}
             load28d={loadData.load28d ? Object.values(loadData.load28d).reduce((a: number, b: any) => a + b, 0) : 0}
             acwr={loadData.acwr}
             history7d={history7d}
+            legMuscularRisk={loadData.legMuscularRisk}
+            totalBodyFatigue={loadData.totalBodyFatigue}
           />
         )}
 

@@ -38,7 +38,10 @@ function fmtDate(s: string) {
 export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
   const [expanded, setExpanded] = useState(false);
   const ls = workout?.loadScore;
-  const hasLoad = ls && (ls.cardio + ls.legs + ls.upper + ls.core + ls.systemic) > 0;
+  const sessionLoad = workout?.rpe && workout?.durationSec
+    ? Math.round(workout.rpe * (workout.durationSec / 60))
+    : null;
+  const hasLoad = sessionLoad != null && sessionLoad > 0;
   const typeColor = TYPE_COLORS[workout?.type] || tokens.color.textMuted;
   const hasDistance = workout?.distanceM != null && workout?.distanceM > 0;
 
@@ -103,13 +106,12 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
 
       {expanded && (
         <View style={styles.detailsPane}>
-          {hasLoad && ls && (
+          {hasLoad && (
             <View style={styles.detailSection}>
-              <Text style={styles.sectionTitle}>Physiological Impact</Text>
+              <Text style={styles.sectionTitle}>Session Load</Text>
               <View style={styles.loadGrid}>
-                <LoadChip label="Cardio"   value={ls.cardio}   color={tokens.color.primary} />
-                <LoadChip label="Legs"     value={ls.legs}     color={tokens.color.success} />
-                <LoadChip label="Systemic" value={ls.systemic} color={tokens.color.accent} />
+                <LoadChip label="RPE"  value={workout.rpe}    color={tokens.color.warning} />
+                <LoadChip label="Load" value={sessionLoad!}   color={tokens.color.primary} />
               </View>
             </View>
           )}

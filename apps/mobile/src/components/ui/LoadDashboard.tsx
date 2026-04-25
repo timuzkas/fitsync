@@ -7,14 +7,15 @@ import { tokens } from '../../tokens';
 
 interface LoadDashboardProps {
   readiness: number;
-  current: { cardio: number; legs: number; upper: number; core: number; systemic: number };
   load7d: number;
   load28d: number;
-  acwr?: number; // Added ACWR (v2.3)
+  acwr?: number;
   history7d?: number[];
+  legMuscularRisk?: number;
+  totalBodyFatigue?: number;
 }
 
-export function LoadDashboard({ readiness, current, load7d, load28d, acwr, history7d }: LoadDashboardProps) {
+export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, legMuscularRisk = 0, totalBodyFatigue = 0 }: LoadDashboardProps) {
   const readinessLabel =
     readiness > 70 ? 'Ready to train' :
     readiness > 40 ? 'Light session only' :
@@ -93,12 +94,10 @@ export function LoadDashboard({ readiness, current, load7d, load28d, acwr, histo
         </View>
 
         <View style={styles.gridCard}>
-          <Text style={styles.cardLabel}>SYSTEM STRESS</Text>
+          <Text style={styles.cardLabel}>MUSCLE RISK</Text>
           <View style={styles.barsArea}>
-            <LoadBar label="Cardio" current={current.cardio} max={100} color={tokens.color.primary} />
-            <LoadBar label="Legs"   current={current.legs}   max={100} color={tokens.color.success} />
-            <LoadBar label="Upper"  current={current.upper}  max={100} color={tokens.color.warning} />
-            <LoadBar label="Core"   current={current.core}   max={100} color={tokens.color.accent}  />
+            <LoadBar label="Leg Risk"  current={legMuscularRisk}  max={100} color={tokens.color.danger} />
+            <LoadBar label="Body"      current={totalBodyFatigue}  max={100} color={tokens.color.warning} />
           </View>
         </View>
       </View>

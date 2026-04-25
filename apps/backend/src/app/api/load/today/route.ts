@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
   calc7dLoad, calc28dLoad, formatLoad,
-  calculateReadinessV2, sumLoads, DEFAULT_CONFIG, LoadConfig
+  calculateReadinessV2, calculateMuscularRisks, sumLoads, DEFAULT_CONFIG, LoadConfig
 } from '@/lib/load';
+import { calculateSessionMSL } from '@/lib/parsers/hevy';
 
 export async function GET(request: Request) {
   const deviceId = String(request.headers.get('x-device-id') || '');
@@ -25,13 +26,13 @@ export async function GET(request: Request) {
     const cutoff28 = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
 
     const workouts = await prisma.workout.findMany({
-      where: { 
-        deviceInstallationId: installation.id, 
+      where: {
+        deviceInstallationId: installation.id,
         startedAt: { gte: cutoff28 },
-        isPlanned: false, // Exclude planned races from load calculations
+        isPlanned: false,
       },
       orderBy: { startedAt: 'desc' },
-      include: { loadScore: true },
+      include: { loadScore: true, exercises: true },
     });
 
     const load7d = formatLoad(calc7dLoad(workouts, now, config));
@@ -49,11 +50,29 @@ export async function GET(request: Request) {
     const lastWorkoutDate = workouts.length > 0 ? new Date(workouts[0].startedAt) : null;
     const readiness = calculateReadinessV2(last7DaysSessions, now, lastWorkoutDate);
 
+    // §15 Leg Muscular Risk + Total Body Fatigue from Hevy strength sessions
+    const cutoff7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const strengthSessions = workouts
+      .filter((w: any) => w.type === 'strength' && w.exercises?.length > 0 && new Date(w.startedAt) >= cutoff7)
+      .map((w: any) => {
+        const { legStress, systemicStress } = calculateSessionMSL(
+          w.exercises.map((ex: any) => ({
+            name: ex.name,
+            sets: (ex.sets as any[]).map((s: any) => ({ reps: s.reps || 0, weight: s.weight || 0, rpe: s.rpe })),
+          })),
+          w.durationSec / 60
+        );
+        return { legStress, totalStress: systemicStress, date: new Date(w.startedAt) };
+      });
+    const { legMuscularRisk, totalBodyFatigue } = calculateMuscularRisks(strengthSessions, now);
+
     const recentWorkouts = workouts.slice(0, 10).map((w: any) => ({
       id: w.id,
       title: w.title,
       type: w.type,
       startedAt: w.startedAt,
+      rpe: w.rpe,
+      durationSec: w.durationSec,
       loadScore: w.loadScore ? {
         cardio: w.loadScore.cardio,
         legs: w.loadScore.legs,
@@ -65,9 +84,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       readiness,
-      current,
       load7d,
       load28d,
+      legMuscularRisk,
+      totalBodyFatigue,
       recentWorkouts,
     });
   } catch (error: any) {
