@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   ScrollView, Alert, KeyboardAvoidingView, Platform
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
 import { tokens } from '../tokens';
 import { useDeviceStore } from '../store/useDeviceStore';
@@ -40,7 +41,24 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
   const [targetHours, setTargetHours] = useState('1');
   const [targetMinutes, setTargetMinutes] = useState('0');
   const [targetSeconds, setTargetSeconds] = useState('0');
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setDateStr(selectedDate.toISOString().split('T')[0]);
+    }
+  };
+
+  const onTimeChange = (event: any, selectedTime?: Date) => {
+    setShowTimePicker(Platform.OS === 'ios');
+    if (selectedTime) {
+      const hours = String(selectedTime.getHours()).padStart(2, '0');
+      const mins = String(selectedTime.getMinutes()).padStart(2, '0');
+      setTimeStr(`${hours}:${mins}`);
+    }
+  };
   const [showPurposePicker, setShowPurposePicker] = useState(false);
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
   const [exercises, setExercises] = useState<any[]>([]);
@@ -252,24 +270,46 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
               <View style={styles.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.fieldLabel}>Date</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={dateStr}
-                    onChangeText={setDateStr}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={tokens.color.textMuted}
-                  />
+                  <TouchableOpacity 
+                    style={styles.pickerTrigger} 
+                    onPress={() => setShowDatePicker(true)}
+                  >
+                    <Text style={styles.pickerTriggerText}>{dateStr}</Text>
+                    <Text style={styles.pickerIcon}>📅</Text>
+                  </TouchableOpacity>
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={new Date(dateStr)}
+                      mode="date"
+                      display="default"
+                      onChange={onDateChange}
+                    />
+                  )}
                 </View>
                 {entryMode === 'log' && (
                   <View style={{ flex: 1, marginLeft: tokens.space.md }}>
                     <Text style={styles.fieldLabel}>Time</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={timeStr}
-                      onChangeText={setTimeStr}
-                      placeholder="HH:MM"
-                      placeholderTextColor={tokens.color.textMuted}
-                    />
+                    <TouchableOpacity 
+                      style={styles.pickerTrigger} 
+                      onPress={() => setShowTimePicker(true)}
+                    >
+                      <Text style={styles.pickerTriggerText}>{timeStr}</Text>
+                      <Text style={styles.pickerIcon}>🕒</Text>
+                    </TouchableOpacity>
+                    {showTimePicker && (
+                      <DateTimePicker
+                        value={(() => {
+                          const [h, m] = timeStr.split(':');
+                          const d = new Date();
+                          d.setHours(parseInt(h), parseInt(m));
+                          return d;
+                        })()}
+                        mode="time"
+                        is24Hour={true}
+                        display="default"
+                        onChange={onTimeChange}
+                      />
+                    )}
                   </View>
                 )}
               </View>
@@ -628,6 +668,26 @@ const styles = StyleSheet.create({
   typeIcon: { fontSize: 32 },
   fieldLabel: { fontSize: tokens.font.sm, color: tokens.color.textMuted, marginBottom: 4, marginTop: tokens.space.lg },
   fieldHint: { fontSize: tokens.font.xs, color: tokens.color.textMuted, marginTop: 2 },
+  pickerTrigger: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    height: 48,
+  },
+  pickerTriggerText: {
+    color: tokens.color.textPrimary,
+    fontSize: tokens.font.md,
+  },
+  pickerIcon: {
+    fontSize: 16,
+    opacity: 0.6,
+  },
   input: {
     backgroundColor: tokens.color.surface,
     color: tokens.color.textPrimary,

@@ -13,6 +13,7 @@ import {
   getDayTypeIcon,
   getVdotZoneLabel 
 } from '../lib/dailyPlanner';
+import { evaluateAdaptiveLevel } from '../../../../packages/shared/planner';
 import { TrainingTarget } from '../types';
 import { tokens } from '../tokens';
 
@@ -183,6 +184,30 @@ export default function PlanScreen() {
         .catch(() => {});
       api.getLoadConfig(deviceId, deviceSecret).then(cfg => {
         updatePlanConfig(cfg);
+        
+        // Section 10: Adaptive Level Check
+        const athleteData = {
+          ...athleteProfile,
+          vdot: cfg.vdot || 40,
+          weeklyPointsTarget: cfg.weeklyPointsTarget || 50,
+          adaptiveState: cfg.adaptiveState || 'normal',
+          pointsHistory: cfg.pointsHistory || []
+        };
+        const adaptation = evaluateAdaptiveLevel(athleteData as any);
+        if (adaptation.newTarget !== athleteData.weeklyPointsTarget) {
+          Alert.alert(
+            'Adaptive Level Adjustment',
+            `Based on your last 3 weeks, we recommend adjusting your weekly points target from ${athleteData.weeklyPointsTarget} to ${adaptation.newTarget}.`,
+            [
+              { text: 'Keep Current', style: 'cancel' },
+              { text: 'Apply Change', onPress: () => {
+                const newCfg = { ...cfg, weeklyPointsTarget: adaptation.newTarget, adaptiveState: adaptation.newState };
+                updatePlanConfig(newCfg);
+                api.updateLoadConfig(deviceId, deviceSecret, newCfg);
+              }}
+            ]
+          );
+        }
       }).catch(() => {});
     }
   }, [deviceId, deviceSecret, updatePlanConfig]);

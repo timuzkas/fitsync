@@ -87,6 +87,20 @@ export function qualifiesForVdotUpdate(distM: number, rpe: number, calculatedVdo
 }
 
 /**
+ * ITRA Performance Index (Simplified) (v2.1)
+ * Derived from equivalent flat distance and time.
+ */
+export function calculateItraIndex(equivalentKm: number, timeSec: number): number {
+  if (timeSec <= 0) return 0;
+  const speedMps = (equivalentKm * 1000) / timeSec;
+  // Standard ITRA scaling: 1000 points roughly equals world record pace
+  // Simplified formula for app baseline
+  const baseSpeed = 6.0; // m/s for top performance
+  const index = (speedMps / baseSpeed) * 1000;
+  return Math.round(Math.min(1000, index));
+}
+
+/**
  * Solve for velocity (m/min) given target VO2 using binary search.
  * target_vo2 = VDOT * coeff
  */

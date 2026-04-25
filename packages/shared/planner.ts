@@ -303,27 +303,3 @@ function availableIndicesFromDays(availableDays: number[], startDate: Date): num
   const startDay = startDate.getDay();
   return availableDays.map(day => (day - startDay + 7) % 7).sort((a, b) => a - b);
 }
-
-function createSession(date: Date, type: DayPlan['type'], zone: keyof typeof VDOT_COEFFS, distanceKm: number, vdot: number): DayPlan {
-  const paceSec = getZonePace(vdot, zone);
-  const durationMin = (distanceKm * paceSec) / 60;
-  const rpe = type === 'Quality' ? (zone === 'R' ? 9 : zone === 'I' ? 8 : 7) : (type === 'Long' ? 5 : 4);
-  
-  return {
-    date,
-    type,
-    zone,
-    distanceKm: Math.round(distanceKm * 10) / 10,
-    durationMin: Math.round(durationMin),
-    rpe,
-    load: Math.round(rpe * durationMin)
-  };
-}
-
-function availableIndicesFromDays(availableDays: number[], startDate: Date): number[] {
-  const startDay = startDate.getDay();
-  // Map absolute days (0=Sun, 1=Mon...) to relative indices [0..6] from startDate
-  return availableDays
-    .map(day => (day - startDay + 7) % 7)
-    .sort((a, b) => a - b);
-}

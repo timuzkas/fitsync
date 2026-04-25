@@ -50,25 +50,38 @@ function HomeScreen({ navigation }: any) {
 
   const checkForVdotUpdate = (newWorkouts: any[]) => {
     const currentVdot = planConfig?.vdot || 40;
+    const currentPointsTarget = planConfig?.weeklyPointsTarget || 50;
+    
     for (const w of newWorkouts) {
       const distM = w.distanceM || 0;
       const durationSec = w.durationSec || 0;
       const rpe = w.rpe || 0;
+      
       if (distM >= 3000 && rpe >= 7 && durationSec > 0) {
         const totalMin = durationSec / 60;
         const newVdot = calculateVdot(distM, totalMin);
+        
         if (newVdot > currentVdot) {
           const pace = (durationSec / (distM / 1000)).toFixed(0);
           const min = Math.floor(+pace / 60);
           const sec = (+pace % 60).toFixed(0);
+          
+          // Section 10.1: Proportional points target increase
+          const newPointsTarget = Math.round(currentPointsTarget * (newVdot / currentVdot));
+          
           Alert.alert(
             '🎉 New PR Detected!',
-            `Your ${(distM/1000).toFixed(1)}km run in ${min}:${sec.padStart(2,'0')} gives you VDOT ${newVdot.toFixed(1)} (currently ${currentVdot.toFixed(1)}).\n\nUpdate your VDOT to improve training paces?`,
+            `Your ${(distM/1000).toFixed(1)}km run in ${min}:${sec.padStart(2,'0')} gives you VDOT ${newVdot.toFixed(1)} (currently ${currentVdot.toFixed(1)}).\n\nUpdate your VDOT and raise your points target to ${newPointsTarget}?`,
             [
               { text: 'Later', style: 'cancel' },
               { text: 'Update VDOT', onPress: () => {
-                updatePlanConfig({ vdot: Math.round(newVdot * 10) / 10 });
-                api.updateLoadConfig(deviceId!, deviceSecret!, { ...planConfig, vdot: Math.round(newVdot * 10) / 10 });
+                const updatedConfig = { 
+                  ...planConfig, 
+                  vdot: Math.round(newVdot * 10) / 10,
+                  weeklyPointsTarget: newPointsTarget 
+                };
+                updatePlanConfig(updatedConfig);
+                api.updateLoadConfig(deviceId!, deviceSecret!, updatedConfig);
               }}
             ]
           );
