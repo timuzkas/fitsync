@@ -15,8 +15,13 @@ model DeviceInstallation {
   lastSeenAt       DateTime       @updatedAt
   appVersion       String?
   config           Json?          // User-specific load engine config
-  vdot             Float?         // Current Jack Daniels VDOT
-  baselineLevel    String?        // beginner | intermediate | advanced
+  vdot                    Float?         // Current Jack Daniels VDOT
+  baselineLevel           String?        // beginner | intermediate | advanced
+  weeklyPointsTarget      Float?         // Section 10
+  adaptiveState           String?        // normal | frozen | stepping_up
+  pointsHistory           Json?          // Array of { week, target, actual, acwr }
+  lastAdaptiveAdjustment  DateTime?
+  conflictReason          String?
   
   dataSources      DataSource[]
   workouts         Workout[]
@@ -66,6 +71,11 @@ model Workout {
   avgHr                Int?
   maxHr                Int?
   elevationGainM       Float?    // elevation gain in meters
+  elevationLossM       Float?    // elevation loss in meters (v2.1)
+  gapPaceSec           Float?    // Grade Adjusted Pace (v2.1)
+  danielsPoints        Float?    // Intensity Points (v2.0)
+  legStress            Float?    // Muscular Stress (v2.2)
+  systemicStress       Float?    // Muscular Stress (v2.2)
   hrZoneTimes          Json?     // { "zone1": 120, "zone2": 300, ... }
   sufferScore          Float?
   title                String?

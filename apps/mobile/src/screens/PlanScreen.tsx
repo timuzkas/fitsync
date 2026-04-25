@@ -252,7 +252,7 @@ export default function PlanScreen() {
 
     const lastWorkout = completedWorkouts.length > 0 ? completedWorkouts[0] : null;
     if (lastWorkout) {
-      dailyPlan = adaptPlanAfterNewWorkout(basePlan, lastWorkout, athlete, readinessScores);
+      dailyPlan = adaptPlanAfterNewWorkout(basePlan, lastWorkout, athlete, readinessScores, workouts);
     }
 
     const targetDate = new Date(target.targetDate);
@@ -398,6 +398,12 @@ export default function PlanScreen() {
             </View>
           </View>
         </View>
+
+        {todayPlan?.planLimitationFlag && (
+          <View style={styles.warningBanner}>
+            <Text style={styles.warningText}>⚠️ {todayPlan.planLimitationFlag}</Text>
+          </View>
+        )}
 
         {todayPlan && (() => {
           const plannedOnDay = getPlannedRaceForDay(todayPlan);
@@ -736,6 +742,21 @@ const styles = StyleSheet.create({
   statValue: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
   statLabel: { fontSize: 10, color: tokens.color.textMuted },
   statDivider: { width: 1, height: 24, backgroundColor: tokens.color.border },
+
+  warningBanner: {
+    backgroundColor: tokens.color.warning + '20',
+    padding: tokens.space.md,
+    borderRadius: tokens.radius.md,
+    marginBottom: tokens.space.md,
+    borderWidth: 1,
+    borderColor: tokens.color.warning,
+  },
+  warningText: {
+    fontSize: 11,
+    color: tokens.color.warning,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
 
   todayCard: {
     backgroundColor: tokens.color.primaryMuted, borderRadius: tokens.radius.lg,

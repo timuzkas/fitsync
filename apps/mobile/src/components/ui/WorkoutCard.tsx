@@ -42,6 +42,12 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
   const typeColor = TYPE_COLORS[workout?.type] || tokens.color.textMuted;
   const hasDistance = workout?.distanceM != null && workout?.distanceM > 0;
 
+  // Pace calculation
+  const paceSec = hasDistance ? workout.durationSec / (workout.distanceM / 1000) : 0;
+  const paceMin = Math.floor(paceSec / 60);
+  const paceRemSec = Math.round(paceSec % 60);
+  const paceStr = paceSec > 0 ? `${paceMin}:${paceRemSec.toString().padStart(2, '0')}/km` : null;
+
   return (
     <View style={styles.container}>
       <TouchableOpacity
@@ -81,11 +87,15 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
           </View>
           <View style={styles.chips}>
             <Chip text={fmtDur(workout?.durationSec)} />
+            {paceStr && <Chip text={paceStr} color={tokens.color.primary} />}
+            {workout?.elevationGainM > 0 && (
+              <Chip text={`+${Math.round(workout.elevationGainM)}m`} color={tokens.color.success} />
+            )}
+            {workout?.danielsPoints > 0 && (
+              <Chip text={`${workout.danielsPoints.toFixed(1)} pts`} color={tokens.color.accent} />
+            )}
             {workout?.avgHr != null && workout?.avgHr > 0 && (
               <Chip text={`${workout.avgHr} bpm`} color={tokens.color.danger} />
-            )}
-            {workout?.calories != null && workout?.calories > 0 && (
-              <Chip text={`${Math.round(workout.calories)} kcal`} />
             )}
           </View>
         </View>

@@ -49,6 +49,44 @@ export const VDOT_COEFFS = {
 };
 
 /**
+ * Daniels Intensity Points (v2.0)
+ * Points per 10 minutes by Zone
+ */
+export const DANIELS_POINTS_PER_10MIN = {
+  E: 1.7,
+  M: 4.7,
+  T: 6.2,
+  I: 9.4,
+  R: 9.0, // Avg of 7.5 - 10.5 range
+};
+
+/**
+ * Calculate Daniels Intensity Points.
+ * Points = (duration in minutes ÷ 10) × zone multiplier
+ */
+export function calculateDanielsPoints(durationMin: number, zone: keyof typeof VDOT_COEFFS): number {
+  const multiplier = DANIELS_POINTS_PER_10MIN[zone] || 1.7;
+  return (durationMin / 10) * multiplier;
+}
+
+/**
+ * Trail Running Load (v2.1) - Koop Formula
+ * 100 m of vertical ascent ≈ 0.9 km equivalent
+ * 100 m of vertical descent ≈ 0.4 km equivalent
+ */
+export function calculateEquivalentKm(distanceKm: number, dPlusM: number, dMinusM: number): number {
+  return distanceKm + (dPlusM * 0.009) + (dMinusM * 0.004);
+}
+
+/**
+ * VDOT Update Trigger (v1.3)
+ * A run qualifies if: distance >= 3km, RPE >= 7, and new VDOT > current.
+ */
+export function qualifiesForVdotUpdate(distM: number, rpe: number, calculatedVdot: number, currentVdot: number): boolean {
+  return distM >= 3000 && rpe >= 7 && calculatedVdot > currentVdot;
+}
+
+/**
  * Solve for velocity (m/min) given target VO2 using binary search.
  * target_vo2 = VDOT * coeff
  */

@@ -10,7 +10,8 @@ import {
   Phase, 
   DayPlan as SharedDayPlan 
 } from '../../../../packages/shared/planner';
-import { VDOT_COEFFS } from '../../../../packages/shared/training';
+import { VDOT_COEFFS, getZonePace } from '../../../../packages/shared/training';
+import { calculateMuscularRisks } from '../../../backend/src/lib/load';
 import { TrainingTarget } from '../types';
 import { tokens } from '../tokens';
 
@@ -21,6 +22,7 @@ export interface Athlete {
   height?: number;
   sex?: 'M' | 'F';
   vdot?: number;
+  weeklyPointsTarget?: number;
 }
 
 export interface DailyPlan extends SharedDayPlan {
@@ -142,7 +144,8 @@ export const generateSmartPlan = (
       vdot,
       chronicLoad,
       aRaceDate,
-      target.distanceKm
+      target.distanceKm,
+      athlete.weeklyPointsTarget
     );
     
     const mobileWeekPlan: DailyPlan[] = weekPlan.map(dp => {
@@ -234,18 +237,29 @@ export const adaptPlanAfterNewWorkout = (
   basePlan: DailyPlan[], 
   lastWorkout: any, 
   athlete: any, 
-  readinessScores: Record<string, number>
+  readinessScores: Record<string, number>,
+  allRecentWorkouts: any[] = []
 ) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split('T')[0];
-  
+
+  // Section 15.4: Combined Risk Rule
+  const muscularRisk = calculateMuscularRisks(
+    allRecentWorkouts.map(w => ({
+      legStress: w.legStress || 0,
+      totalStress: w.systemicStress || 0,
+      date: new Date(w.startedAt)
+    })),
+    today
+  );
+
   return basePlan.map(day => {
     const dayDate = new Date(day.date);
     dayDate.setHours(0, 0, 0, 0);
     const isToday = dayDate.getTime() === today.getTime();
     
-    // 1. "Today" Guard: If we already worked out today, mark this slot as done
+    // 1. "Today" Guard
     if (isToday && lastWorkout) {
       const workoutDate = new Date(lastWorkout.startedAt || lastWorkout.date);
       workoutDate.setHours(0, 0, 0, 0);
@@ -254,7 +268,7 @@ export const adaptPlanAfterNewWorkout = (
         const distKm = (lastWorkout.distanceM || 0) / 1000 || lastWorkout.distance || 0;
         return {
           ...day,
-          type: 'Rest' as any, // Treat rest of day as recovery
+          type: 'Rest' as any,
           title: 'Workout Completed',
           description: `You already ran ${distKm.toFixed(1)}km today. Focus on recovery.`,
           distanceKm: 0,
@@ -264,26 +278,38 @@ export const adaptPlanAfterNewWorkout = (
       }
     }
 
-    // 2. Readiness Trimming (Section 5.1): Apply ONLY to the immediate next session (Today/Tomorrow)
+    // Section 15.4: Auto downgrade planned session to Easy if LMR > 68
+    const finalLegRiskLevel = Math.max(muscularRisk.legMuscularRisk, muscularRisk.totalBodyFatigue * 0.7);
+    if (isToday && finalLegRiskLevel > 68 && day.type === 'Quality') {
+      const paceSec = getZonePace(athlete.vdot || 40, 'E');
+      return {
+        ...day,
+        type: 'Easy' as any,
+        zone: 'E' as any,
+        title: 'Easy Run (Recovery)',
+        description: `Downgraded from quality due to high Leg Muscular Risk (${finalLegRiskLevel}%).`,
+        targetPaceSecPerKm: paceSec,
+        targetDurationMin: Math.round((day.targetDistanceKm * paceSec) / 60),
+        intensity: 'low' as any
+      };
+    }
+
+    // 2. Readiness Trimming (Section 5.1)
     const readiness = readinessScores[todayStr] ?? 100;
     const diffTime = dayDate.getTime() - today.getTime();
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     
-    // Only adapt the immediate horizon (Today = 0, Tomorrow = 1)
-    // We don't touch Day 2+ because readiness will likely have recovered by then
     if (readiness < 30 && diffDays >= 0 && diffDays <= 1) {
       if (day.type === 'Quality') {
         return {
           ...day,
           title: `⚠️ ${day.title} (High Risk)`,
-          description: `Current readiness is ${readiness.toFixed(0)}%. Reference 5.1.10: Manual review recommended.`,
+          description: `Current readiness is ${readiness.toFixed(0)}%. Manual review recommended.`,
           intensity: 'high' as any
         };
       }
       
       if (day.type === 'Easy' || day.type === 'Long') {
-        // Section 5.1.9: Reduce volume proportionally
-        // We apply a steeper cut today (0.6) than tomorrow (0.8)
         const reduction = diffDays === 0 ? 0.6 : 0.8;
         return {
           ...day,

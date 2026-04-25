@@ -20,7 +20,73 @@ export interface HevyParseResult {
   };
 }
 
-export function parseHevyLog(description: string): HevyParseResult | null {
+/**
+ * Section 14: Muscular Stress Load (MSL) Calculation
+ */
+export function calculateSessionMSL(
+  exercises: Array<{ name: string; sets: Array<{ reps: number; weight: number; rpe?: number }> }>,
+  durationMin: number
+) {
+  let sessionMSL = 0;
+  let legStress = 0;
+  let systemicStress = 0;
+
+  for (const ex of exercises) {
+    const coeff = getMuscleCoefficient(ex.name);
+    const legCoeff = getLegCoefficient(ex.name);
+    const systemicCoeff = getSystemicCoefficient(ex.name);
+
+    for (const set of ex.sets) {
+      const weightBonus = 1 + (set.weight / 70); // Normalized to 70kg
+      const rpeFactor = (set.rpe || 7) / 10; // RPE factor 0-1
+
+      const volumeFactor = set.reps * weightBonus * rpeFactor;
+
+      sessionMSL += volumeFactor * coeff;
+      legStress += volumeFactor * legCoeff;
+      systemicStress += set.reps * (set.rpe || 7) * systemicCoeff;
+    }
+  }
+
+  // Apply duration factor (Section 14.3)
+  const durationFactor = Math.min(2.0, durationMin / 45);
+  return {
+    msl: Math.round(sessionMSL * durationFactor),
+    legStress: Math.round(legStress * durationFactor),
+    systemicStress: Math.round(systemicStress * durationFactor)
+  };
+}
+
+function getMuscleCoefficient(name: string): number {
+  const lower = name.toLowerCase();
+  if (lower.includes('squat') || lower.includes('deadlift') || lower.includes('lunge')) return 2.8;
+  if (lower.includes('pushup') || lower.includes('press')) return 1.5;
+  if (lower.includes('pull up') || lower.includes('row')) return 1.3;
+  if (lower.includes('burpee')) return 2.6;
+  return 1.0;
+}
+
+function getLegCoefficient(name: string): number {
+  const lower = name.toLowerCase();
+  if (lower.includes('squat')) return 2.85;
+  if (lower.includes('deadlift')) return 2.70;
+  if (lower.includes('lunge') || lower.includes('bulgarian')) return 2.45;
+  if (lower.includes('leg press')) return 2.30;
+  if (lower.includes('step-up')) return 1.90;
+  if (lower.includes('burpee')) return 2.10;
+  return 0.1; // Minimal leg impact for upper body
+}
+
+function getSystemicCoefficient(name: string): number {
+  const lower = name.toLowerCase();
+  if (lower.includes('deadlift')) return 1.5;
+  if (lower.includes('squat')) return 1.2;
+  if (lower.includes('burpee')) return 1.4;
+  return 0.8;
+}
+
+export function parseHevyLog(
+description: string): HevyParseResult | null {
   if (!description || !description.includes('Logged with Hevy')) return null;
 
   const lines = description.split('\n');

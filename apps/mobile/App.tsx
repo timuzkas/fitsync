@@ -204,6 +204,7 @@ function HomeScreen({ navigation }: any) {
             current={current}
             load7d={loadData.load7d ? Object.values(loadData.load7d).reduce((a: number, b: any) => a + b, 0) : 0}
             load28d={loadData.load28d ? Object.values(loadData.load28d).reduce((a: number, b: any) => a + b, 0) : 0}
+            acwr={loadData.acwr}
             history7d={history7d}
           />
         )}

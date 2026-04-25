@@ -163,6 +163,93 @@ export function sumLoads(loads: RawLoad[]): RawLoad {
   );
 }
 
+/**
+ * Athlete Readiness Score (v2.2)
+ * Readiness increases with rest and decreases with recent duration and load.
+ */
+export function calculateReadinessV2(
+  last7DaysSessions: Array<{ load: number; durationMin: number; date: Date }>,
+  today: Date,
+  lastWorkoutDate: Date | null
+): number {
+  const RECOVERY_RATE = 12; // points per rest day
+  const LOAD_IMPACT = 0.65;
+  const DURATION_IMPACT = 0.45;
+  let baseReadiness = 65;
+
+  const daysSinceLastWorkout = lastWorkoutDate 
+    ? Math.floor((today.getTime() - lastWorkoutDate.getTime()) / (1000 * 60 * 60 * 24))
+    : 7;
+  
+  const recoveryBonus = Math.min(35, daysSinceLastWorkout * RECOVERY_RATE);
+
+  let loadPenalty = 0;
+  let durationPenalty = 0;
+
+  for (const session of last7DaysSessions) {
+    // Session load = RPE * duration
+    loadPenalty += session.load * LOAD_IMPACT;
+    durationPenalty += session.durationMin * DURATION_IMPACT;
+  }
+
+  // Simplified penalty scaling for the 0-100 range
+  let readiness = baseReadiness + recoveryBonus - ((loadPenalty + durationPenalty) / 10);
+  return Math.max(0, Math.min(100, Math.round(readiness)));
+}
+
+/**
+ * Section 15: Leg Muscular Risk (LMR) & Total Body Fatigue (TBF)
+ */
+export function calculateMuscularRisks(
+  sessions: Array<{ legStress: number; totalStress: number; date: Date }>,
+  today: Date
+) {
+  let legMuscularRisk = 0;
+  let totalBodyFatigue = 0;
+
+  for (const session of sessions) {
+    const daysAgo = Math.floor((today.getTime() - session.date.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysAgo > 7) continue;
+
+    const legDecay = Math.pow(0.62, daysAgo);
+    const totalDecay = Math.pow(0.68, daysAgo);
+
+    legMuscularRisk += session.legStress * legDecay;
+    totalBodyFatigue += session.totalStress * totalDecay;
+  }
+
+  // Normalization per spec (tuned from real runner data)
+  legMuscularRisk = Math.min(100, (legMuscularRisk / 380) * 100);
+  totalBodyFatigue = Math.min(100, (totalBodyFatigue / 520) * 100);
+
+  return {
+    legMuscularRisk: Math.round(legMuscularRisk),
+    totalBodyFatigue: Math.round(totalBodyFatigue)
+  };
+}
+
+export const LEG_COEFFICIENTS: Record<string, number> = {
+  'Squat': 2.85,
+  'Deadlift': 2.70,
+  'Romanian Deadlift': 2.70,
+  'Lunges': 2.45,
+  'Bulgarian Split Squat': 2.45,
+  'Leg Press': 2.30,
+  'Step-ups': 1.90,
+  'Burpees': 2.10,
+  'Thrusters': 2.10,
+  'Running': 1.00,
+  'Pike Pushup': 0.35,
+  'Pull Up': 0.25,
+};
+
+export const SYSTEMIC_COEFFICIENTS: Record<string, number> = {
+  'Squat': 1.2,
+  'Deadlift': 1.5,
+  'Burpees': 1.4,
+  'Running': 0.8,
+};
+
 export function calcReadiness(
   cardio: number,
   legs: number,

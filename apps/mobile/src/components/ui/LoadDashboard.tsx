@@ -10,10 +10,11 @@ interface LoadDashboardProps {
   current: { cardio: number; legs: number; upper: number; core: number; systemic: number };
   load7d: number;
   load28d: number;
+  acwr?: number; // Added ACWR (v2.3)
   history7d?: number[];
 }
 
-export function LoadDashboard({ readiness, current, load7d, load28d, history7d }: LoadDashboardProps) {
+export function LoadDashboard({ readiness, current, load7d, load28d, acwr, history7d }: LoadDashboardProps) {
   const readinessLabel =
     readiness > 70 ? 'Ready to train' :
     readiness > 40 ? 'Light session only' :
@@ -23,6 +24,14 @@ export function LoadDashboard({ readiness, current, load7d, load28d, history7d }
     readiness > 70 ? tokens.color.success :
     readiness > 40 ? tokens.color.warning :
     tokens.color.danger;
+
+  // ACWR Color mapping
+  const acwrColor = 
+    !acwr ? tokens.color.textMuted :
+    acwr > 1.5 ? tokens.color.danger :
+    acwr > 1.3 ? tokens.color.warning :
+    acwr >= 0.8 ? tokens.color.success :
+    tokens.color.warning;
 
   return (
     <View style={styles.container}>
@@ -37,7 +46,14 @@ export function LoadDashboard({ readiness, current, load7d, load28d, history7d }
         {/* Load stats */}
         <View style={styles.statsCol}>
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>WEEKLY LOAD</Text>
+            <View style={styles.statHeader}>
+              <Text style={styles.statLabel}>WEEKLY LOAD</Text>
+              {acwr != null && (
+                <View style={[styles.acwrBadge, { borderColor: acwrColor }]}>
+                  <Text style={[styles.acwrText, { color: acwrColor }]}>ACWR {acwr.toFixed(1)}</Text>
+                </View>
+              )}
+            </View>
             <View style={styles.statValueRow}>
               <View style={[styles.accent, { backgroundColor: tokens.color.primary }]} />
               <Text style={styles.statNum}>{Math.round(load7d)}</Text>
@@ -121,12 +137,28 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  statHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+    paddingRight: tokens.space.sm,
+  },
+  acwrBadge: {
+    borderWidth: 1,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+  },
+  acwrText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
   statLabel: {
     fontSize: 9,
     fontWeight: '800',
     color: tokens.color.textTertiary,
     letterSpacing: 1.8,
-    marginBottom: 2,
   },
   statValueRow: {
     flexDirection: 'row',
