@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
   calc7dLoad, calc28dLoad, formatLoad,
-  calculateReadinessV2, calculateMuscularRisks, sumLoads, DEFAULT_CONFIG, LoadConfig
+  calculateReadinessV2, calculateMuscularRisks, DEFAULT_CONFIG, LoadConfig
 } from '@/lib/load';
 import { calculateSessionMSL } from '@/lib/parsers/hevy';
 
@@ -35,19 +35,23 @@ export async function GET(request: Request) {
       include: { loadScore: true, exercises: true },
     });
 
-    const load7d = formatLoad(calc7dLoad(workouts, now, config));
-    const load28d = formatLoad(calc28dLoad(workouts, now, config));
-    const current = formatLoad(sumLoads([load7d]));
-
     const cutoff7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const last7DaysSessions = workouts
+
+    // When includeHevyInLoad is false, exclude strength workouts from load/readiness calculations
+    const includeHevy = config.includeHevyInLoad !== false;
+    const loadWorkouts = includeHevy ? workouts : workouts.filter((w: any) => w.type !== 'strength');
+
+    const load7d = formatLoad(calc7dLoad(loadWorkouts, now, config));
+    const load28d = formatLoad(calc28dLoad(loadWorkouts, now, config));
+
+    const last7DaysSessions = loadWorkouts
       .filter((w: any) => new Date(w.startedAt) >= cutoff7)
       .map((w: any) => ({
         load: (w.rpe || 5) * (w.durationSec / 60),
         durationMin: w.durationSec / 60,
         date: new Date(w.startedAt),
       }));
-    const lastWorkoutDate = workouts.length > 0 ? new Date(workouts[0].startedAt) : null;
+    const lastWorkoutDate = loadWorkouts.length > 0 ? new Date(loadWorkouts[0].startedAt) : null;
     const readiness = calculateReadinessV2(last7DaysSessions, now, lastWorkoutDate);
 
     // §15 Leg Muscular Risk + Total Body Fatigue from Hevy strength sessions

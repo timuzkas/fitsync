@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Switch
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { tokens } from '../tokens';
@@ -35,12 +35,36 @@ export default function SettingsScreen() {
   const [freeDays, setFreeDays] = useState<string[]>(planConfig?.freeDays || ['mon', 'wed', 'fri']);
   const [maxHR, setMaxHR] = useState(athleteProfile?.maxHR?.toString() || '');
   const [restHR, setRestHR] = useState(athleteProfile?.restHR?.toString() || '');
+  const [loadConfig, setLoadConfig] = useState<any>(null);
+  const [includeHevyInLoad, setIncludeHevyInLoad] = useState(true);
 
   useEffect(() => {
     if (athleteProfile?.maxHR) setMaxHR(athleteProfile.maxHR.toString());
     if (athleteProfile?.restHR) setRestHR(athleteProfile.restHR.toString());
     if (planConfig?.freeDays) setFreeDays(planConfig.freeDays);
   }, [athleteProfile, planConfig]);
+
+  useEffect(() => {
+    if (!deviceId || !deviceSecret) return;
+    api.getLoadConfig(deviceId, deviceSecret)
+      .then((cfg: any) => {
+        setLoadConfig(cfg);
+        setIncludeHevyInLoad(cfg.includeHevyInLoad !== false);
+      })
+      .catch(() => {});
+  }, [deviceId, deviceSecret]);
+
+  async function toggleHevyInLoad(value: boolean) {
+    setIncludeHevyInLoad(value);
+    if (!deviceId || !deviceSecret || !loadConfig) return;
+    try {
+      await api.updateLoadConfig(deviceId, deviceSecret, { ...loadConfig, includeHevyInLoad: value });
+      setLoadConfig((prev: any) => ({ ...prev, includeHevyInLoad: value }));
+    } catch {
+      setIncludeHevyInLoad(!value);
+      Alert.alert('Error', 'Failed to save setting');
+    }
+  }
 
   function toggleDay(dayId: string) {
     setFreeDays(prev =>
@@ -200,6 +224,26 @@ export default function SettingsScreen() {
           </View>
           <Text style={styles.rowArrow}>›</Text>
         </TouchableOpacity>
+
+        <View style={styles.rowCard}>
+          <View style={[styles.rowIcon, { backgroundColor: tokens.color.warning }]}>
+            <Text style={styles.rowIconText}>🏋</Text>
+          </View>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowTitle}>Hevy Load in Training Load</Text>
+            <Text style={styles.rowSub}>
+              {includeHevyInLoad
+                ? 'Strength sessions count toward 7d/28d load'
+                : 'Strength sessions excluded from load (Muscle Risk still active)'}
+            </Text>
+          </View>
+          <Switch
+            value={includeHevyInLoad}
+            onValueChange={toggleHevyInLoad}
+            trackColor={{ false: tokens.color.border, true: tokens.color.primaryMuted }}
+            thumbColor={includeHevyInLoad ? tokens.color.primary : tokens.color.textMuted}
+          />
+        </View>
 
         {/* Heart Rate Settings */}
         <Text style={styles.sectionLabel}>HEART RATE ZONES</Text>

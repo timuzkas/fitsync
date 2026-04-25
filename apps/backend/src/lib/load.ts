@@ -11,6 +11,7 @@ export interface LoadConfig {
   multipliers: { cardio: number; legs: number; upper: number; core: number };
   weeklyTarget: number;
   readinessFormula: 'simple' | 'exponential';
+  includeHevyInLoad?: boolean;
 }
 
 export const DEFAULT_CONFIG: LoadConfig = {
@@ -18,6 +19,7 @@ export const DEFAULT_CONFIG: LoadConfig = {
   multipliers: { cardio: 1.2, legs: 1.5, upper: 1.0, core: 0.8 },
   weeklyTarget: 400,
   readinessFormula: 'simple',
+  includeHevyInLoad: true,
 };
 
 export function getDecayRate(halfLifeHours: number) {
