@@ -251,7 +251,7 @@ export const generateSmartPlan = (
         const checkDate = new Date(dateObj);
         checkDate.setDate(checkDate.getDate() + offset);
         const nearbyRace = raceDates.get(checkDate.toLocaleDateString('en-CA'));
-        if (nearbyRace?.priority === 'b-race') bRaceNear = true;
+        if (nearbyRace?.priority === 'b-race' || nearbyRace?.priority === 'd-race') bRaceNear = true;
       }
 
       let finalType = dp.type;
@@ -267,7 +267,9 @@ export const generateSmartPlan = (
         finalDuration = raceInfo.durationMin > 0
           ? raceInfo.durationMin
           : Math.round(raceInfo.distance * (target.distanceKm > 10 ? 6 : 5.5));
-        finalDesc = `${raceInfo.distance}km ${raceInfo.priority === 'b-race' ? 'B' : 'C'} race. This is a ${raceInfo.priority === 'b-race' ? 'key preparation' : 'training'} race.`;
+        finalDesc = raceInfo.priority === 'd-race'
+          ? `${raceInfo.distance}km trail race. Taper well and account for vertical gain.`
+          : `${raceInfo.distance}km ${raceInfo.priority === 'b-race' ? 'B' : 'C'} race. This is a ${raceInfo.priority === 'b-race' ? 'key preparation' : 'training'} race.`;
       } else if (bRaceNear && dp.type !== 'Rest') {
         if (dp.type === 'Quality') {
           finalType = 'Easy' as any;

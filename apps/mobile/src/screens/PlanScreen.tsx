@@ -589,8 +589,8 @@ export default function PlanScreen() {
                       </View>
                       <View style={styles.badgeRow}>
                         {day.isRaceDay && (
-                          <View style={[styles.raceBadge, day.racePriority === 'b-race' ? styles.badgeB : styles.badgeC]}>
-                            <Text style={styles.raceBadgeText}>🏁 {day.racePriority === 'b-race' ? 'B' : 'C'}</Text>
+                          <View style={[styles.raceBadge, day.racePriority === 'b-race' ? styles.badgeB : day.racePriority === 'd-race' ? styles.badgeD : styles.badgeC]}>
+                            <Text style={styles.raceBadgeText}>🏁 {day.racePriority === 'b-race' ? 'B' : day.racePriority === 'd-race' ? 'D Trail' : 'C'}</Text>
                           </View>
                         )}
                         {day.isTaper && (
@@ -914,6 +914,7 @@ const styles = StyleSheet.create({
   raceBadgeText: { fontSize: 9, fontWeight: '700', color: '#fff' },
   badgeB: { backgroundColor: tokens.color.warning + '30' },
   badgeC: { backgroundColor: tokens.color.primary + '30' },
+  badgeD: { backgroundColor: tokens.color.success + '30' },
   dayTypeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   dayTypeText: { fontSize: 9, fontWeight: '700' },
   dayContent: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm, marginBottom: 2 },

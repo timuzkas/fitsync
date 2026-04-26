@@ -36,8 +36,9 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
   const [avgHr, setAvgHr] = useState(editWorkout?.avgHr ? String(editWorkout.avgHr) : '');
   const [calories, setCalories] = useState('');
   const [notes, setNotes] = useState('');
-  const [sessionPurpose, setSessionPurpose] = useState<'training' | 'b-race' | 'c-race'>(editWorkout?.sessionPurpose || 'training');
+  const [sessionPurpose, setSessionPurpose] = useState<'training' | 'b-race' | 'c-race' | 'd-race'>(editWorkout?.sessionPurpose || 'training');
   const [targetDist, setTargetDist] = useState(editWorkout?.distanceM ? String(editWorkout.distanceM / 1000) : '');
+  const [targetDPlus, setTargetDPlus] = useState(editWorkout?.elevationGainM ? String(editWorkout.elevationGainM) : '');
   const [targetHours, setTargetHours] = useState('1');
   const [targetMinutes, setTargetMinutes] = useState('0');
   const [targetSeconds, setTargetSeconds] = useState('0');
@@ -155,6 +156,7 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
         isPlanned: sessionPurpose !== 'training',
         sessionPurpose: sessionPurpose !== 'training' ? sessionPurpose : undefined,
         targetTimeSec: entryMode === 'plan' ? (parseInt(targetHours || '0') * 3600 + parseInt(targetMinutes || '0') * 60 + parseInt(targetSeconds || '0')) : undefined,
+        elevationGainM: sessionPurpose === 'd-race' && targetDPlus ? parseInt(targetDPlus) : undefined,
       };
 
       if (editWorkout?.id) {
@@ -175,7 +177,10 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
     if (step === 0) return !!entryMode;
     if (step === 1) return !!workoutType;
     if (step === 2) return !!title.trim() && !!durMin;
-    if (step === 3 && entryMode === 'plan') return !!targetDist;
+    if (step === 3 && entryMode === 'plan') {
+      if (sessionPurpose === 'd-race') return !!targetDist && !!targetDPlus;
+      return !!targetDist;
+    }
     return true;
   }
 
@@ -211,13 +216,13 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
                   <Text style={styles.modeTitle}>Log Activity</Text>
                   <Text style={styles.modeDesc}>Completed workout/race</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.modeCard, entryMode === 'plan' && styles.modeCardActive]}
                   onPress={() => { setEntryMode('plan'); setSessionPurpose('c-race'); }}
                 >
                   <Text style={styles.modeIcon}>🏁</Text>
                   <Text style={styles.modeTitle}>Plan Race</Text>
-                  <Text style={styles.modeDesc}>Future B or C event</Text>
+                  <Text style={styles.modeDesc}>Future B, C or Trail event</Text>
                 </TouchableOpacity>
               </View>
 
@@ -227,7 +232,8 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
           <View style={styles.purposeGrid}>
             {[
               { id: 'b-race', label: 'B Race', desc: 'Important race' },
-              { id: 'c-race', label: 'C Race', desc: 'Easy/Training race' },
+              { id: 'c-race', label: 'C Race', desc: 'Training race' },
+              { id: 'd-race', label: 'D Race', desc: 'Trail race' },
             ].map(p => (
               <TouchableOpacity 
                 key={p.id}
@@ -354,16 +360,31 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
           {step === 3 && entryMode === 'plan' && (
             <View style={styles.stepContent}>
               <Text style={styles.stepTitle}>Race Goals</Text>
-              
+
               <Text style={styles.fieldLabel}>Target Distance (km)</Text>
               <TextInput
                 style={styles.input}
                 value={targetDist}
                 onChangeText={setTargetDist}
-                placeholder="10.0"
+                placeholder={sessionPurpose === 'd-race' ? '42.0' : '10.0'}
                 placeholderTextColor={tokens.color.textMuted}
                 keyboardType="numeric"
               />
+
+              {sessionPurpose === 'd-race' && (
+                <>
+                  <Text style={styles.fieldLabel}>Vertical Ascent — D+ (m)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={targetDPlus}
+                    onChangeText={setTargetDPlus}
+                    placeholder="1500"
+                    placeholderTextColor={tokens.color.textMuted}
+                    keyboardType="numeric"
+                  />
+                  <Text style={styles.fieldHint}>Total positive elevation gain in metres</Text>
+                </>
+              )}
 
               <Text style={styles.fieldLabel}>Target Time</Text>
               <View style={styles.timeRow}>
@@ -524,9 +545,15 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
                 {entryMode === 'plan' ? (
                   <>
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Target</Text>
+                      <Text style={styles.summaryLabel}>Distance</Text>
                       <Text style={styles.summaryValue}>{targetDist || '-'} km</Text>
                     </View>
+                    {sessionPurpose === 'd-race' && (
+                      <View style={styles.summaryRow}>
+                        <Text style={styles.summaryLabel}>D+ (vert)</Text>
+                        <Text style={styles.summaryValue}>{targetDPlus || '-'} m</Text>
+                      </View>
+                    )}
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>Goal Time</Text>
                       <Text style={styles.summaryValue}>
@@ -535,8 +562,8 @@ export default function AddWorkoutScreen({ route, navigation }: any) {
                     </View>
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>Priority</Text>
-                      <View style={[styles.priorityBadge, sessionPurpose === 'b-race' ? styles.badgeB : styles.badgeC]}>
-                        <Text style={styles.priorityBadgeText}>{sessionPurpose === 'b-race' ? 'B Race' : 'C Race'}</Text>
+                      <View style={[styles.priorityBadge, sessionPurpose === 'b-race' ? styles.badgeB : sessionPurpose === 'd-race' ? styles.badgeD : styles.badgeC]}>
+                        <Text style={styles.priorityBadgeText}>{sessionPurpose === 'b-race' ? 'B Race' : sessionPurpose === 'd-race' ? 'D Trail' : 'C Race'}</Text>
                       </View>
                     </View>
                   </>
@@ -729,6 +756,7 @@ const styles = StyleSheet.create({
   priorityBadge: { paddingHorizontal: tokens.space.sm, paddingVertical: 2, borderRadius: tokens.radius.sm },
   badgeB: { backgroundColor: tokens.color.warning + '30' },
   badgeC: { backgroundColor: tokens.color.primary + '30' },
+  badgeD: { backgroundColor: tokens.color.success + '30' },
   priorityBadgeText: { fontSize: tokens.font.xs, fontWeight: 'bold', color: tokens.color.textPrimary },
   loadPreviewCard: { backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md, padding: tokens.space.md, marginTop: tokens.space.lg },
   loadPreviewTitle: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary, marginBottom: tokens.space.md },

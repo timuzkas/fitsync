@@ -68,8 +68,10 @@ export interface Race {
   id: string;
   name: string;
   date: string;
-  type: 'A' | 'B' | 'C';
+  type: 'A' | 'B' | 'C' | 'D';
   distanceKm: number;
+  dPlusM?: number;
+  goalTimeSec?: number;
 }
 
 export interface TrainingTarget {
