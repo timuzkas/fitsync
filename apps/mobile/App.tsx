@@ -1,8 +1,9 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  RefreshControl, Alert, ActivityIndicator
+  RefreshControl, Alert, ActivityIndicator,
+  LayoutAnimation, UIManager, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
@@ -15,6 +16,7 @@ import { useDeviceStore } from './src/store/useDeviceStore';
 import { api } from './src/api/client';
 import { LoadDashboard } from './src/components/ui/LoadDashboard';
 import { WorkoutCard } from './src/components/ui/WorkoutCard';
+import { ActionSheet } from './src/components/ui/BottomSheet';
 import { tokens } from './src/tokens';
 import AddWorkoutScreen from './src/screens/AddWorkoutScreen';
 import LoadEngineScreen from './src/screens/LoadEngineScreen';
@@ -25,6 +27,10 @@ import TargetScreen from './src/screens/TargetScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import ProfileEditScreen from './src/screens/ProfileEditScreen';
 import WellnessCalibrationScreen from './src/screens/WellnessCalibrationScreen';
+
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
 
 const Stack = createNativeStackNavigator();
 
@@ -54,12 +60,20 @@ function groupWorkoutsByDate(workouts: any[]) {
 }
 
 function HomeScreen({ navigation }: any) {
-  const { deviceId, deviceSecret, isLoading: regLoading, target, _hasHydrated, planConfig, updatePlanConfig, wellness, wellnessCalibrationHours } = useDeviceStore();
+  const {
+    deviceId, deviceSecret, isLoading: regLoading, target, _hasHydrated,
+    planConfig, updatePlanConfig, wellness, wellnessCalibrationHours,
+  } = useDeviceStore();
+
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [plannedWorkouts, setPlannedWorkouts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [loadData, setLoadData] = useState<any>(null);
+
+  // ActionSheet state
+  const [deleteSheet, setDeleteSheet] = useState<string | null>(null);
+  const [upcomingSheet, setUpcomingSheet] = useState<any>(null);
 
   useEffect(() => {
     if (deviceId && deviceSecret) {
@@ -78,38 +92,32 @@ function HomeScreen({ navigation }: any) {
   const checkForVdotUpdate = (newWorkouts: any[]) => {
     const currentVdot = planConfig?.vdot || 40;
     const currentPointsTarget = planConfig?.weeklyPointsTarget || 50;
-    
     for (const w of newWorkouts) {
       const distM = w.distanceM || 0;
       const durationSec = w.durationSec || 0;
       const rpe = w.rpe || 0;
-      
       if (distM >= 3000 && rpe >= 7 && durationSec > 0) {
         const totalMin = durationSec / 60;
         const newVdot = calculateVdot(distM, totalMin);
-        
         if (newVdot > currentVdot) {
           const pace = (durationSec / (distM / 1000)).toFixed(0);
           const min = Math.floor(+pace / 60);
           const sec = (+pace % 60).toFixed(0);
-          
-          // Section 10.1: Proportional points target increase
           const newPointsTarget = Math.round(currentPointsTarget * (newVdot / currentVdot));
-          
           Alert.alert(
             '🎉 New PR Detected!',
             `Your ${(distM/1000).toFixed(1)}km run in ${min}:${sec.padStart(2,'0')} gives you VDOT ${newVdot.toFixed(1)} (currently ${currentVdot.toFixed(1)}).\n\nUpdate your VDOT and raise your points target to ${newPointsTarget}?`,
             [
               { text: 'Later', style: 'cancel' },
               { text: 'Update VDOT', onPress: () => {
-                const updatedConfig = { 
-                  ...planConfig, 
+                const updatedConfig = {
+                  ...planConfig,
                   vdot: Math.round(newVdot * 10) / 10,
-                  weeklyPointsTarget: newPointsTarget 
+                  weeklyPointsTarget: newPointsTarget,
                 };
                 updatePlanConfig(updatedConfig);
                 api.updateLoadConfig(deviceId!, deviceSecret!, updatedConfig);
-              }}
+              }},
             ]
           );
           break;
@@ -168,19 +176,15 @@ function HomeScreen({ navigation }: any) {
     }
   }
 
-  async function handleDeleteWorkout(id: string) {
+  async function confirmDeleteWorkout(id: string) {
     if (!deviceId || !deviceSecret) return;
-    Alert.alert('Delete Workout', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try {
-          await api.deleteWorkout(deviceId, deviceSecret, id);
-          await Promise.all([fetchWorkouts(), fetchLoad()]);
-        } catch (e: any) {
-          Alert.alert('Error', e.message);
-        }
-      }}
-    ]);
+    try {
+      await api.deleteWorkout(deviceId, deviceSecret, id);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      await Promise.all([fetchWorkouts(), fetchLoad()]);
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
   }
 
   if (regLoading) {
@@ -191,7 +195,11 @@ function HomeScreen({ navigation }: any) {
     );
   }
 
-  const weekStart = (() => { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1)); return d; })();
+  const weekStart = (() => {
+    const d = new Date(); d.setHours(0,0,0,0);
+    d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1));
+    return d;
+  })();
   const weekWorkouts = workouts.filter(w => new Date(w.startedAt) >= weekStart);
   const weekSessions = weekWorkouts.length;
   const weekKm = weekWorkouts.reduce((s, w) => s + (w.distanceM || 0) / 1000, 0);
@@ -204,10 +212,30 @@ function HomeScreen({ navigation }: any) {
     : false;
   const effectiveReadiness = isWellnessToday ? wellness!.readinessScore : (loadData?.readiness || 0);
 
-  const now = new Date();
-  const currentHour = now.getHours();
+  const currentHour = new Date().getHours();
   const { start: winStart = 6, end: winEnd = 11 } = wellnessCalibrationHours || {};
   const inCalibrationWindow = currentHour >= winStart && currentHour < winEnd;
+
+  // ActionSheet for upcoming workout
+  const upcomingSheetActions = upcomingSheet ? [
+    {
+      label: 'Edit',
+      icon: 'pencil-outline',
+      onPress: () => navigation.navigate('AddWorkout', { editWorkout: upcomingSheet }),
+    },
+    {
+      label: 'Delete',
+      icon: 'trash-outline',
+      destructive: true,
+      onPress: async () => {
+        try {
+          await api.deleteWorkout(deviceId, deviceSecret, upcomingSheet.id);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          fetchPlanned();
+        } catch { Alert.alert('Error', 'Failed to delete'); }
+      },
+    },
+  ] : [];
 
   return (
     <View style={styles.container}>
@@ -224,12 +252,14 @@ function HomeScreen({ navigation }: any) {
             style={[styles.headerBtn, syncing && { opacity: 0.35 }]}
             onPress={handleSync}
             disabled={syncing}
+            activeOpacity={0.7}
           >
             <Ionicons name="refresh" size={18} color={tokens.color.textSecondary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBtn}
             onPress={() => navigation.navigate('Settings')}
+            activeOpacity={0.7}
           >
             <Ionicons name="settings-outline" size={18} color={tokens.color.textSecondary} />
           </TouchableOpacity>
@@ -250,6 +280,7 @@ function HomeScreen({ navigation }: any) {
             tintColor={tokens.color.primary}
           />
         }
+        showsVerticalScrollIndicator={false}
       >
         {/* ── Load dashboard ── */}
         {loadData && (
@@ -358,7 +389,7 @@ function HomeScreen({ navigation }: any) {
             <Text style={styles.emptyIcon}>🏋️</Text>
             <Text style={styles.emptyTitle}>No workouts yet</Text>
             <Text style={styles.emptySub}>Connect Strava or log manually</Text>
-            <TouchableOpacity style={styles.emptyBtn} onPress={handleSync} disabled={syncing}>
+            <TouchableOpacity style={styles.emptyBtn} onPress={handleSync} disabled={syncing} activeOpacity={0.8}>
               <Text style={styles.emptyBtnText}>{syncing ? 'Syncing…' : 'Sync from Strava'}</Text>
             </TouchableOpacity>
           </View>
@@ -367,7 +398,11 @@ function HomeScreen({ navigation }: any) {
             <View key={group.key}>
               <Text style={styles.groupHeader}>{group.label}</Text>
               {group.items.map(w => (
-                <WorkoutCard key={w.id} workout={w} onDelete={handleDeleteWorkout} />
+                <WorkoutCard
+                  key={w.id}
+                  workout={w}
+                  onDelete={(id) => setDeleteSheet(id)}
+                />
               ))}
             </View>
           ))
@@ -388,26 +423,17 @@ function HomeScreen({ navigation }: any) {
                   <TouchableOpacity
                     key={w.id}
                     style={[styles.upcomingRow, !isLast && styles.upcomingRowBorder]}
-                    onPress={() =>
-                      Alert.alert(
-                        w.title || 'Planned Workout',
-                        `${d.toLocaleDateString()}${w.distanceM ? ` • ${(w.distanceM / 1000).toFixed(1)}km` : ''}`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: w }) },
-                          { text: 'Delete', style: 'destructive', onPress: async () => {
-                            try { await api.deleteWorkout(deviceId, deviceSecret, w.id); fetchPlanned(); }
-                            catch { Alert.alert('Error', 'Failed to delete'); }
-                          }},
-                        ]
-                      )
-                    }
+                    onPress={() => setUpcomingSheet(w)}
                     activeOpacity={0.7}
                   >
                     <Text style={styles.upcomingDate}>{dateStr}</Text>
-                    <Text style={styles.upcomingTitle} numberOfLines={1}>{w.title || ((w.type || 'workout').charAt(0).toUpperCase() + (w.type || 'workout').slice(1))}</Text>
-                    {w.distanceM ? <Text style={styles.upcomingDist}>{(w.distanceM / 1000).toFixed(1)} km</Text> : null}
-                    <Ionicons name="chevron-forward" size={14} color={tokens.color.textTertiary} />
+                    <Text style={styles.upcomingTitle} numberOfLines={1}>
+                      {w.title || ((w.type || 'workout').charAt(0).toUpperCase() + (w.type || 'workout').slice(1))}
+                    </Text>
+                    {w.distanceM ? (
+                      <Text style={styles.upcomingDist}>{(w.distanceM / 1000).toFixed(1)} km</Text>
+                    ) : null}
+                    <Ionicons name="ellipsis-horizontal" size={16} color={tokens.color.textTertiary} />
                   </TouchableOpacity>
                 );
               })}
@@ -418,13 +444,45 @@ function HomeScreen({ navigation }: any) {
         <View style={{ height: 100 }} />
       </ScrollView>
 
+      {/* ── FAB ── */}
       <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('AddWorkout')}
-        activeOpacity={0.8}
+        activeOpacity={0.85}
       >
-        <Text style={styles.fabText}>+</Text>
+        <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
+
+      {/* ── Delete confirmation sheet ── */}
+      <ActionSheet
+        visible={deleteSheet !== null}
+        onClose={() => setDeleteSheet(null)}
+        title="Remove workout?"
+        subtitle="This action cannot be undone."
+        actions={[
+          {
+            label: 'Delete Workout',
+            icon: 'trash-outline',
+            destructive: true,
+            onPress: () => { if (deleteSheet) confirmDeleteWorkout(deleteSheet); },
+          },
+        ]}
+      />
+
+      {/* ── Upcoming workout actions sheet ── */}
+      <ActionSheet
+        visible={upcomingSheet !== null}
+        onClose={() => setUpcomingSheet(null)}
+        title={upcomingSheet?.title || 'Planned Workout'}
+        subtitle={upcomingSheet ? (() => {
+          const d = new Date(upcomingSheet.startedAt);
+          const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          return upcomingSheet.distanceM
+            ? `${dateStr} · ${(upcomingSheet.distanceM / 1000).toFixed(1)} km`
+            : dateStr;
+        })() : undefined}
+        actions={upcomingSheetActions}
+      />
     </View>
   );
 }
@@ -467,9 +525,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: tokens.color.border,
-  },
-  headerBtnText: {
-    fontSize: tokens.font.md,
   },
 
   /* Scroll */
@@ -554,24 +609,14 @@ const styles = StyleSheet.create({
     gap: 5,
     flexWrap: 'wrap',
   },
-  raceCardNextDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-  },
+  raceCardNextDot: { width: 5, height: 5, borderRadius: 3 },
   raceCardNextText: {
     fontSize: tokens.font.xs,
     fontWeight: '700',
     color: tokens.color.textSecondary,
   },
-  raceCardNextSep: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textTertiary,
-  },
-  raceCardNextMeta: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
-  },
+  raceCardNextSep: { fontSize: tokens.font.xs, color: tokens.color.textTertiary },
+  raceCardNextMeta: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
   raceCardEmpty: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -650,15 +695,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: tokens.space.xl,
   },
-  emptyIcon: {
-    fontSize: 44,
-    marginBottom: tokens.space.sm,
-  },
-  emptyTitle: {
-    fontSize: tokens.font.lg,
-    fontWeight: '600',
-    color: tokens.color.textPrimary,
-  },
+  emptyIcon: { fontSize: 44, marginBottom: tokens.space.sm },
+  emptyTitle: { fontSize: tokens.font.lg, fontWeight: '600', color: tokens.color.textPrimary },
   emptySub: {
     fontSize: tokens.font.sm,
     color: tokens.color.textMuted,
@@ -671,11 +709,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.lg,
     paddingVertical: tokens.space.sm,
   },
-  emptyBtnText: {
-    color: '#fff',
-    fontSize: tokens.font.sm,
-    fontWeight: '700',
-  },
+  emptyBtnText: { color: '#fff', fontSize: tokens.font.sm, fontWeight: '700' },
 
   /* Upcoming list */
   upcomingList: {
@@ -690,7 +724,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: tokens.space.md,
-    paddingVertical: 10,
+    paddingVertical: 11,
     gap: tokens.space.sm,
   },
   upcomingRowBorder: {
@@ -727,17 +761,11 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  fabText: {
-    fontSize: 28,
-    color: '#fff',
-    fontWeight: '300',
-    marginTop: -2,
+    elevation: 6,
+    shadowColor: tokens.color.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
 });
 
@@ -751,7 +779,6 @@ export default function App() {
     try {
       let storedId = await api.Storage.get('deviceId');
       let storedSec = await api.Storage.get('deviceSecret');
-      
       if (!storedId || !storedSec) {
         const newId = `device-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
         const newSec = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -775,9 +802,7 @@ export default function App() {
     const unsubscribe = useDeviceStore.subscribe(
       (state) => state.deviceId,
       (deviceId, prevDeviceId) => {
-        if (prevDeviceId && !deviceId) {
-          init();
-        }
+        if (prevDeviceId && !deviceId) init();
       }
     );
     return unsubscribe;

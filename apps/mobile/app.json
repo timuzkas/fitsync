@@ -10,9 +10,6 @@
       "newArchEnabled": false
     },
     "scheme": "fitsync",
-    "extra": {
-      "API_URL": "https://fit.timuzkas.xyz"
-    },
     "android": {
       "package": "xyz.timuzkas.fitsync",
       "adaptiveIcon": {
@@ -24,6 +21,7 @@
       "icon": "./fitsync.png"
     },
     "extra": {
+      "API_URL": "https://fit.timuzkas.xyz",
       "eas": {
         "projectId": "f5cb17bd-cc0f-4793-949e-30160a86303c"
       }

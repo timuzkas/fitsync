@@ -1,6 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  LayoutAnimation, Platform, UIManager,
+} from 'react-native';
 import { tokens } from '../../tokens';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
 
 interface WorkoutCardProps {
   workout: any;
@@ -37,6 +45,7 @@ function fmtDate(s: string) {
 
 export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
   const [expanded, setExpanded] = useState(false);
+
   const ls = workout?.loadScore;
   const sessionLoad = workout?.rpe && workout?.durationSec
     ? Math.round(workout.rpe * (workout.durationSec / 60))
@@ -45,17 +54,26 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
   const typeColor = TYPE_COLORS[workout?.type] || tokens.color.textMuted;
   const hasDistance = workout?.distanceM != null && workout?.distanceM > 0;
 
-  // Pace calculation
   const paceSec = hasDistance ? workout.durationSec / (workout.distanceM / 1000) : 0;
   const paceMin = Math.floor(paceSec / 60);
   const paceRemSec = Math.round(paceSec % 60);
   const paceStr = paceSec > 0 ? `${paceMin}:${paceRemSec.toString().padStart(2, '0')}/km` : null;
 
+  const handleToggle = () => {
+    LayoutAnimation.configureNext({
+      duration: 250,
+      create: { type: 'easeInEaseOut', property: 'opacity' },
+      update: { type: 'easeInEaseOut' },
+      delete: { type: 'easeInEaseOut', property: 'opacity' },
+    });
+    setExpanded(e => !e);
+  };
+
   return (
     <View style={styles.container}>
       <TouchableOpacity
-        onPress={() => setExpanded(!expanded)}
-        activeOpacity={0.75}
+        onPress={handleToggle}
+        activeOpacity={0.8}
         style={[styles.card, expanded && styles.cardExpanded]}
       >
         <View style={[styles.stripe, { backgroundColor: typeColor }]} />
@@ -110,8 +128,8 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
             <View style={styles.detailSection}>
               <Text style={styles.sectionTitle}>Session Load</Text>
               <View style={styles.loadGrid}>
-                <LoadChip label="RPE"  value={workout.rpe}    color={tokens.color.warning} />
-                <LoadChip label="Load" value={sessionLoad!}   color={tokens.color.primary} />
+                <LoadChip label="RPE"  value={workout.rpe}  color={tokens.color.warning} />
+                <LoadChip label="Load" value={sessionLoad!} color={tokens.color.primary} />
               </View>
             </View>
           )}
@@ -121,25 +139,13 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
               <Text style={styles.sectionTitle}>Hevy Volume</Text>
               <View style={styles.loadGrid}>
                 {ls.sourceDetail.volume.legs > 0 && (
-                  <HevyVolumeChip
-                    label="Legs"
-                    value={ls.sourceDetail.volume.legs}
-                    color={tokens.color.success}
-                  />
+                  <HevyVolumeChip label="Legs"  value={ls.sourceDetail.volume.legs}  color={tokens.color.success} />
                 )}
                 {ls.sourceDetail.volume.upper > 0 && (
-                  <HevyVolumeChip
-                    label="Upper"
-                    value={ls.sourceDetail.volume.upper}
-                    color={tokens.color.warning}
-                  />
+                  <HevyVolumeChip label="Upper" value={ls.sourceDetail.volume.upper} color={tokens.color.warning} />
                 )}
                 {ls.sourceDetail.volume.core > 0 && (
-                  <HevyVolumeChip
-                    label="Core"
-                    value={ls.sourceDetail.volume.core}
-                    color={tokens.color.accent}
-                  />
+                  <HevyVolumeChip label="Core"  value={ls.sourceDetail.volume.core}  color={tokens.color.accent} />
                 )}
               </View>
             </View>
@@ -154,7 +160,7 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
                     <Text style={[styles.zoneName, {
                       color: zone === 'z5' ? tokens.color.danger :
                              zone === 'z4' ? tokens.color.warning :
-                             tokens.color.textSecondary
+                             tokens.color.textSecondary,
                     }]}>{zone.toUpperCase()}</Text>
                     <Text style={styles.zoneTime}>{Math.round((secs || 0) / 60)}m</Text>
                   </View>
@@ -204,6 +210,7 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
             <TouchableOpacity
               onPress={() => onDelete(workout?.id)}
               style={styles.dangerZone}
+              activeOpacity={0.7}
             >
               <Text style={styles.dangerText}>Remove Workout</Text>
             </TouchableOpacity>
@@ -233,15 +240,7 @@ function LoadChip({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function HevyVolumeChip({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
+function HevyVolumeChip({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <View style={styles.loadChip}>
       <View style={[styles.chipIndicator, { backgroundColor: color }]} />
@@ -291,9 +290,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: tokens.space.sm,
   },
-  icon: {
-    fontSize: 22,
-  },
+  icon: { fontSize: 22 },
   title: {
     fontSize: tokens.font.md,
     fontWeight: '700',
@@ -346,9 +343,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
     borderColor: tokens.color.border,
   },
-  detailSection: {
-    marginTop: tokens.space.sm,
-  },
+  detailSection: { marginTop: tokens.space.sm },
   sectionTitle: {
     fontSize: 9,
     fontWeight: '800',
@@ -374,20 +369,9 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
     gap: 5,
   },
-  chipIndicator: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-  },
-  chipLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: tokens.color.textSecondary,
-  },
-  chipValue: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
+  chipIndicator: { width: 5, height: 5, borderRadius: 3 },
+  chipLabel: { fontSize: 11, fontWeight: '600', color: tokens.color.textSecondary },
+  chipValue: { fontSize: 11, fontWeight: '800' },
   zones: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -401,16 +385,8 @@ const styles = StyleSheet.create({
     minWidth: 44,
     alignItems: 'center',
   },
-  zoneName: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  zoneTime: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: tokens.color.textPrimary,
-  },
+  zoneName: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  zoneTime: { fontSize: 11, fontWeight: '600', color: tokens.color.textPrimary },
   sufferRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -421,16 +397,8 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
     marginBottom: 6,
   },
-  sufferLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: tokens.color.textSecondary,
-  },
-  sufferValue: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: tokens.color.warning,
-  },
+  sufferLabel: { fontSize: 11, fontWeight: '600', color: tokens.color.textSecondary },
+  sufferValue: { fontSize: 13, fontWeight: '800', color: tokens.color.warning },
   notesText: {
     fontSize: tokens.font.sm,
     color: tokens.color.textSecondary,
@@ -438,9 +406,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 4,
   },
-  exerciseList: {
-    gap: tokens.space.sm,
-  },
+  exerciseList: { gap: tokens.space.sm },
   exerciseItem: {
     backgroundColor: tokens.color.elevated,
     borderRadius: tokens.radius.sm,
@@ -452,11 +418,7 @@ const styles = StyleSheet.create({
     color: tokens.color.textPrimary,
     marginBottom: 6,
   },
-  setGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
+  setGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   setChip: {
     backgroundColor: tokens.color.surface,
     paddingHorizontal: 8,
@@ -465,16 +427,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.color.border,
   },
-  setText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: tokens.color.textSecondary,
-  },
-  setUnit: {
-    fontSize: 9,
-    color: tokens.color.textMuted,
-    fontWeight: '400',
-  },
+  setText: { fontSize: 11, fontWeight: '700', color: tokens.color.textSecondary },
+  setUnit: { fontSize: 9, color: tokens.color.textMuted, fontWeight: '400' },
   dangerZone: {
     marginTop: tokens.space.md,
     paddingVertical: tokens.space.sm,
@@ -482,9 +436,5 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: tokens.color.border,
   },
-  dangerText: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.danger,
-    fontWeight: '600',
-  },
+  dangerText: { fontSize: tokens.font.xs, color: tokens.color.danger, fontWeight: '600' },
 });
