@@ -5,8 +5,6 @@ import { tokens } from '../../tokens';
 
 interface LoadDashboardProps {
   readiness: number;
-  load7d: number;
-  load28d: number;
   acwr?: number;
   legMuscularRisk?: number;
   totalBodyFatigue?: number;
@@ -32,7 +30,7 @@ function riskZone(v: number): { label: string; color: string } {
 }
 
 export function LoadDashboard({
-  readiness, load7d, load28d, acwr,
+  readiness, acwr,
   legMuscularRisk = 0, totalBodyFatigue = 0,
   onCalibrate, calibrateEnabled, isWellnessActive, calibratedAt,
 }: LoadDashboardProps) {
@@ -56,31 +54,9 @@ export function LoadDashboard({
   return (
     <View style={styles.container}>
 
-      {/* ── Hero: ring + load numbers ── */}
+      {/* ── Hero: readiness ring ── */}
       <View style={styles.heroRow}>
-        <View style={styles.ringWrap}>
-          <MetricRing value={readiness} label="Readiness" size={138} strokeWidth={16} />
-        </View>
-
-        <View style={styles.statsCol}>
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>WEEKLY LOAD</Text>
-            <View style={styles.statValueRow}>
-              <View style={[styles.accent, { backgroundColor: tokens.color.primary }]} />
-              <Text style={styles.statNum}>{Math.round(load7d)}</Text>
-            </View>
-          </View>
-
-          <View style={styles.separator} />
-
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>MONTHLY LOAD</Text>
-            <View style={styles.statValueRow}>
-              <View style={[styles.accent, { backgroundColor: tokens.color.warning }]} />
-              <Text style={styles.statNum}>{Math.round(load28d)}</Text>
-            </View>
-          </View>
-        </View>
+        <MetricRing value={readiness} label="Readiness" size={120} strokeWidth={14} />
       </View>
 
       {/* ── Status + calibrate row ── */}
@@ -154,54 +130,8 @@ const styles = StyleSheet.create({
 
   /* Hero */
   heroRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.space.lg,
     paddingVertical: tokens.space.xs,
-  },
-  ringWrap: {
-    width: 138,
-    height: 138,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  statsCol: {
-    flex: 1,
-    height: 138,
-    justifyContent: 'center',
-  },
-  statItem: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  statLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: tokens.color.textTertiary,
-    letterSpacing: 1.8,
-    marginBottom: 2,
-  },
-  statValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  accent: {
-    width: 3,
-    height: 22,
-    borderRadius: 2,
-  },
-  statNum: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: tokens.color.textPrimary,
-    letterSpacing: -1,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: tokens.color.border,
-    marginVertical: 2,
   },
 
   /* Status row */

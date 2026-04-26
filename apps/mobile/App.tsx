@@ -203,7 +203,7 @@ function HomeScreen({ navigation }: any) {
   const weekWorkouts = workouts.filter(w => new Date(w.startedAt) >= weekStart);
   const weekSessions = weekWorkouts.length;
   const weekKm = weekWorkouts.reduce((s, w) => s + (w.distanceM || 0) / 1000, 0);
-  const weekLoad = weekWorkouts.reduce((s, w) => s + (w.rpe && w.durationSec ? Math.round(w.rpe * w.durationSec / 60) : 0), 0);
+  const weekElevation = weekWorkouts.reduce((s, w) => s + (w.elevationGainM || 0), 0);
 
   const daysToRace = target ? Math.ceil((new Date(target.targetDate).getTime() - Date.now()) / 86400000) : null;
 
@@ -289,8 +289,6 @@ function HomeScreen({ navigation }: any) {
         {loadData && (
           <LoadDashboard
             readiness={effectiveReadiness}
-            load7d={loadData.load7d ? Object.values(loadData.load7d).reduce((a: number, b: any) => a + b, 0) : 0}
-            load28d={loadData.load28d ? Object.values(loadData.load28d).reduce((a: number, b: any) => a + b, 0) : 0}
             acwr={loadData.acwr}
             legMuscularRisk={loadData.legMuscularRisk}
             totalBodyFatigue={loadData.totalBodyFatigue}
@@ -315,44 +313,64 @@ function HomeScreen({ navigation }: any) {
             activeOpacity={0.75}
           >
             {target && daysToRace != null && daysToRace > 0 ? (
-              <>
-                <View style={styles.raceCardTop}>
-                  <View style={styles.raceCardLeft}>
-                    <Text style={styles.raceCardLabel}>GOAL RACE</Text>
-                    <Text style={styles.raceCardTitle}>
-                      {target.distanceKm}K {target.type === 'run' ? 'Run' : target.type === 'ride' ? 'Ride' : 'Swim'}
-                    </Text>
-                    <Text style={styles.raceCardDate}>
-                      {new Date(target.targetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </Text>
-                  </View>
-                  <View style={styles.raceCardDaysWrap}>
-                    <Text style={styles.raceCardDaysNum}>{daysToRace}</Text>
-                    <Text style={styles.raceCardDaysLabel}>days</Text>
-                  </View>
-                </View>
-                {plannedWorkouts[0] && (
-                  <View style={styles.raceCardNext}>
-                    <Text style={styles.raceCardNextLabel}>NEXT PLANNED</Text>
-                    <View style={styles.raceCardNextRow}>
-                      <View style={[styles.raceCardNextDot, { backgroundColor: tokens.color.primary }]} />
-                      <Text style={styles.raceCardNextText}>
-                        {plannedWorkouts[0].title || (plannedWorkouts[0].type.charAt(0).toUpperCase() + plannedWorkouts[0].type.slice(1))}
-                      </Text>
-                      <Text style={styles.raceCardNextSep}>·</Text>
-                      <Text style={styles.raceCardNextMeta}>
-                        {new Date(plannedWorkouts[0].startedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                      </Text>
-                      {plannedWorkouts[0].distanceM ? (
-                        <>
-                          <Text style={styles.raceCardNextSep}>·</Text>
-                          <Text style={styles.raceCardNextMeta}>{(plannedWorkouts[0].distanceM / 1000).toFixed(1)} km</Text>
-                        </>
-                      ) : null}
+              (() => {
+                const totalDays = target.createdAt
+                  ? Math.max(1, Math.ceil((new Date(target.targetDate).getTime() - new Date(target.createdAt).getTime()) / 86400000))
+                  : daysToRace;
+                const progress = Math.min(1, Math.max(0, 1 - daysToRace / totalDays));
+                const goalTimeSec = target.targetTimeSec;
+                const goalTimeStr = goalTimeSec
+                  ? `${Math.floor(goalTimeSec / 3600)}h ${String(Math.floor((goalTimeSec % 3600) / 60)).padStart(2, '0')}m`
+                  : null;
+                return (
+                  <>
+                    <View style={styles.raceCardTop}>
+                      <Text style={styles.raceCardLabel}>GOAL RACE</Text>
+                      <View style={styles.raceCardTitleRow}>
+                        <Text style={styles.raceCardTitle}>
+                          {target.distanceKm}K {target.type === 'run' ? 'Run' : target.type === 'ride' ? 'Ride' : 'Swim'}
+                        </Text>
+                        <Text style={styles.raceCardDaysInline}>{daysToRace} days</Text>
+                      </View>
+                      <View style={styles.raceCardMeta}>
+                        <Text style={styles.raceCardDate}>
+                          {new Date(target.targetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </Text>
+                        {goalTimeStr && (
+                          <>
+                            <Text style={styles.raceCardMetaSep}>·</Text>
+                            <Text style={styles.raceCardGoalTime}>Goal {goalTimeStr}</Text>
+                          </>
+                        )}
+                      </View>
+                      <View style={styles.raceProgressBg}>
+                        <View style={[styles.raceProgressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
+                      </View>
                     </View>
-                  </View>
-                )}
-              </>
+                    {plannedWorkouts[0] && (
+                      <View style={styles.raceCardNext}>
+                        <Text style={styles.raceCardNextLabel}>NEXT PLANNED</Text>
+                        <View style={styles.raceCardNextRow}>
+                          <View style={[styles.raceCardNextDot, { backgroundColor: tokens.color.primary }]} />
+                          <Text style={styles.raceCardNextText}>
+                            {plannedWorkouts[0].title || (plannedWorkouts[0].type.charAt(0).toUpperCase() + plannedWorkouts[0].type.slice(1))}
+                          </Text>
+                          <Text style={styles.raceCardNextSep}>·</Text>
+                          <Text style={styles.raceCardNextMeta}>
+                            {new Date(plannedWorkouts[0].startedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </Text>
+                          {plannedWorkouts[0].distanceM ? (
+                            <>
+                              <Text style={styles.raceCardNextSep}>·</Text>
+                              <Text style={styles.raceCardNextMeta}>{(plannedWorkouts[0].distanceM / 1000).toFixed(1)} km</Text>
+                            </>
+                          ) : null}
+                        </View>
+                      </View>
+                    )}
+                  </>
+                );
+              })()
             ) : (
               <View style={styles.raceCardEmpty}>
                 <Ionicons name="flag-outline" size={20} color={tokens.color.textTertiary} />
@@ -377,8 +395,8 @@ function HomeScreen({ navigation }: any) {
             </View>
             <View style={styles.weekDivider} />
             <View style={styles.weekChip}>
-              <Text style={styles.weekChipNum}>{weekLoad}</Text>
-              <Text style={styles.weekChipLabel}>load pts</Text>
+              <Text style={styles.weekChipNum}>{Math.round(weekElevation)}</Text>
+              <Text style={styles.weekChipLabel}>vert m</Text>
             </View>
           </View>
         )}
@@ -548,12 +566,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   raceCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: tokens.space.md,
-    gap: tokens.space.md,
+    paddingBottom: tokens.space.sm,
   },
-  raceCardLeft: { flex: 1 },
   raceCardLabel: {
     fontSize: 9,
     fontWeight: '800',
@@ -561,38 +576,52 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginBottom: 3,
   },
+  raceCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
   raceCardTitle: {
     fontSize: tokens.font.lg,
     fontWeight: '800',
     color: tokens.color.textPrimary,
     letterSpacing: -0.3,
   },
+  raceCardDaysInline: {
+    fontSize: tokens.font.sm,
+    fontWeight: '700',
+    color: tokens.color.primary,
+  },
+  raceCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+    marginBottom: tokens.space.sm,
+  },
   raceCardDate: {
     fontSize: tokens.font.xs,
     color: tokens.color.textMuted,
-    marginTop: 2,
   },
-  raceCardDaysWrap: {
-    alignItems: 'center',
-    backgroundColor: tokens.color.primaryMuted,
-    borderRadius: tokens.radius.sm,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    minWidth: 56,
+  raceCardMetaSep: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textTertiary,
   },
-  raceCardDaysNum: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: tokens.color.primary,
-    letterSpacing: -1,
-    lineHeight: 30,
+  raceCardGoalTime: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    fontWeight: '600',
   },
-  raceCardDaysLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: tokens.color.primary,
-    letterSpacing: 0.5,
-    opacity: 0.75,
+  raceProgressBg: {
+    height: 3,
+    backgroundColor: tokens.color.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  raceProgressFill: {
+    height: '100%',
+    backgroundColor: tokens.color.primary,
+    borderRadius: 2,
   },
   raceCardNext: {
     borderTopWidth: 1,

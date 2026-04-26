@@ -62,7 +62,6 @@ export default function PlanScreen() {
     if (target) {
       setStoredTarget(target);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
     }
   }, [target, setStoredTarget]);
 
