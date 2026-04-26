@@ -222,7 +222,7 @@ export function calculateMuscularRisks(
 
   // Normalization per spec (tuned from real runner data)
   legMuscularRisk = Math.min(100, (legMuscularRisk / 380) * 100);
-  totalBodyFatigue = Math.min(100, (totalBodyFatigue / 520) * 100);
+  totalBodyFatigue = Math.min(100, (totalBodyFatigue / 180) * 100);
 
   return {
     legMuscularRisk: Math.round(legMuscularRisk),

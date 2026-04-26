@@ -210,7 +210,10 @@ function HomeScreen({ navigation }: any) {
   const isWellnessToday = wellness?.calibratedAt
     ? new Date(wellness.calibratedAt).toDateString() === new Date().toDateString()
     : false;
-  const effectiveReadiness = isWellnessToday ? wellness!.readinessScore : (loadData?.readiness || 0);
+  const loadReadiness = loadData?.readiness || 0;
+  const effectiveReadiness = isWellnessToday
+    ? Math.max(0, Math.min(100, wellness!.readinessScore + (loadReadiness - 65)))
+    : loadReadiness;
 
   const currentHour = new Date().getHours();
   const { start: winStart = 6, end: winEnd = 11 } = wellnessCalibrationHours || {};
@@ -300,6 +303,7 @@ function HomeScreen({ navigation }: any) {
             }}
             calibrateEnabled={inCalibrationWindow}
             isWellnessActive={isWellnessToday}
+            calibratedAt={isWellnessToday ? wellness!.calibratedAt : undefined}
           />
         )}
 

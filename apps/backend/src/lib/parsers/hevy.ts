@@ -39,17 +39,19 @@ export function calculateSessionMSL(
     for (const set of ex.sets) {
       const weightBonus = 1 + (set.weight / 60);
       const rpeFactor = (set.rpe || 7) / 5.0;
-
       const volumeFactor = set.reps * weightBonus * rpeFactor;
 
       sessionMSL += volumeFactor * coeff;
       legStress += volumeFactor * legCoeff;
-      systemicStress += set.reps * (set.rpe || 7) * systemicCoeff;
+
+      const repFactor = Math.min((set.reps || 0) / 10, 1.5);
+      const setRpeFactor = (set.rpe || 7) / 10;
+      const loadFactor = 1 + Math.min((set.weight || 0) / 100, 1.0);
+      systemicStress += 10 * repFactor * setRpeFactor * loadFactor * systemicCoeff;
     }
   }
 
-  // Apply duration factor (Section 14.3)
-  const durationFactor = Math.min(2.0, durationMin / 45);
+  const durationFactor = Math.min(durationMin / 45, 1.5);
   return {
     msl: Math.round(sessionMSL * durationFactor),
     legStress: Math.round(legStress * durationFactor),

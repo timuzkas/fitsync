@@ -13,6 +13,7 @@ interface LoadDashboardProps {
   onCalibrate?: () => void;
   calibrateEnabled?: boolean;
   isWellnessActive?: boolean;
+  calibratedAt?: string;
 }
 
 function acwrZone(v?: number): { label: string; color: string } {
@@ -33,8 +34,11 @@ function riskZone(v: number): { label: string; color: string } {
 export function LoadDashboard({
   readiness, load7d, load28d, acwr,
   legMuscularRisk = 0, totalBodyFatigue = 0,
-  onCalibrate, calibrateEnabled, isWellnessActive,
+  onCalibrate, calibrateEnabled, isWellnessActive, calibratedAt,
 }: LoadDashboardProps) {
+  const calibratedTime = isWellnessActive && calibratedAt
+    ? new Date(calibratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null;
   const readinessLabel =
     readiness > 70 ? 'Ready to train' :
     readiness > 40 ? 'Light session only' :
@@ -100,6 +104,13 @@ export function LoadDashboard({
           </TouchableOpacity>
         )}
       </View>
+
+      {/* ── Calibration timestamp ── */}
+      {calibratedTime && (
+        <Text style={styles.calibratedSince}>
+          Readiness base set at {calibratedTime} · adjusting with new load
+        </Text>
+      )}
 
       {/* ── Metrics strip: ACWR | Leg Risk | Body Fatigue ── */}
       <View style={styles.strip}>
@@ -223,6 +234,14 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: tokens.color.primary,
     fontWeight: '700',
+  },
+  calibratedSince: {
+    fontSize: 9,
+    color: tokens.color.textTertiary,
+    letterSpacing: 0.2,
+    marginTop: -4,
+    marginBottom: tokens.space.sm,
+    paddingLeft: 11,
   },
   calibrateLink: {
     paddingLeft: tokens.space.xs,
