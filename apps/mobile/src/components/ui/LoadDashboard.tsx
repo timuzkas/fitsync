@@ -1,8 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { LoadBar } from '../ui/LoadBar';
 import { MetricRing } from '../ui/MetricRing';
-import { LoadSparkline } from '../charts/LoadSparkline';
 import { tokens } from '../../tokens';
 
 interface LoadDashboardProps {
@@ -10,7 +8,6 @@ interface LoadDashboardProps {
   load7d: number;
   load28d: number;
   acwr?: number;
-  history7d?: number[];
   legMuscularRisk?: number;
   totalBodyFatigue?: number;
   onCalibrate?: () => void;
@@ -18,7 +15,26 @@ interface LoadDashboardProps {
   isWellnessActive?: boolean;
 }
 
-export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, legMuscularRisk = 0, totalBodyFatigue = 0, onCalibrate, calibrateEnabled, isWellnessActive }: LoadDashboardProps) {
+function acwrZone(v?: number): { label: string; color: string } {
+  if (v == null) return { label: 'No data', color: tokens.color.textTertiary };
+  if (v > 1.5)   return { label: 'Overreach', color: tokens.color.danger };
+  if (v > 1.3)   return { label: 'Caution',   color: tokens.color.warning };
+  if (v >= 0.8)  return { label: 'Sweet spot', color: tokens.color.success };
+  return           { label: 'Low',        color: tokens.color.warning };
+}
+
+function riskZone(v: number): { label: string; color: string } {
+  if (v >= 75) return { label: 'High',     color: tokens.color.danger };
+  if (v >= 45) return { label: 'Moderate', color: tokens.color.warning };
+  if (v >= 20) return { label: 'Low–mid',  color: '#84cc16' };
+  return         { label: 'Low',       color: tokens.color.success };
+}
+
+export function LoadDashboard({
+  readiness, load7d, load28d, acwr,
+  legMuscularRisk = 0, totalBodyFatigue = 0,
+  onCalibrate, calibrateEnabled, isWellnessActive,
+}: LoadDashboardProps) {
   const readinessLabel =
     readiness > 70 ? 'Ready to train' :
     readiness > 40 ? 'Light session only' :
@@ -29,12 +45,9 @@ export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, leg
     readiness > 40 ? tokens.color.warning :
     tokens.color.danger;
 
-  const acwrColor =
-    !acwr ? tokens.color.textMuted :
-    acwr > 1.5 ? tokens.color.danger :
-    acwr > 1.3 ? tokens.color.warning :
-    acwr >= 0.8 ? tokens.color.success :
-    tokens.color.warning;
+  const aw = acwrZone(acwr);
+  const lmr = riskZone(legMuscularRisk);
+  const tbf = riskZone(totalBodyFatigue);
 
   return (
     <View style={styles.container}>
@@ -47,14 +60,7 @@ export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, leg
 
         <View style={styles.statsCol}>
           <View style={styles.statItem}>
-            <View style={styles.statHeader}>
-              <Text style={styles.statLabel}>WEEKLY LOAD</Text>
-              {acwr != null && (
-                <View style={[styles.acwrBadge, { borderColor: acwrColor }]}>
-                  <Text style={[styles.acwrText, { color: acwrColor }]}>ACWR {acwr.toFixed(1)}</Text>
-                </View>
-              )}
-            </View>
+            <Text style={styles.statLabel}>WEEKLY LOAD</Text>
             <View style={styles.statValueRow}>
               <View style={[styles.accent, { backgroundColor: tokens.color.primary }]} />
               <Text style={styles.statNum}>{Math.round(load7d)}</Text>
@@ -83,7 +89,11 @@ export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, leg
           </View>
         )}
         {onCalibrate && (
-          <TouchableOpacity onPress={onCalibrate} style={styles.calibrateLink} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity
+            onPress={onCalibrate}
+            style={styles.calibrateLink}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
             <Text style={[styles.calibrateLinkText, { color: calibrateEnabled ? tokens.color.primary : tokens.color.textTertiary }]}>
               {isWellnessActive ? 'Re-calibrate' : 'Calibrate'}
             </Text>
@@ -91,26 +101,34 @@ export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, leg
         )}
       </View>
 
-      {/* ── Bottom grid: sparkline | muscle risk ── */}
-      <View style={styles.grid}>
-        <View style={styles.gridCard}>
-          <Text style={styles.cardLabel}>LOAD TREND</Text>
-          <View style={styles.sparklineArea}>
-            {history7d && history7d.length > 1 ? (
-              <LoadSparkline data={history7d} color={tokens.color.primary} height={44} />
-            ) : (
-              <Text style={styles.emptyText}>No data yet</Text>
-            )}
-          </View>
-          <Text style={styles.cardSub}>7-day history</Text>
+      {/* ── Metrics strip: ACWR | Leg Risk | Body Fatigue ── */}
+      <View style={styles.strip}>
+        <View style={styles.stripChip}>
+          <Text style={styles.stripLabel}>ACWR</Text>
+          <Text style={[styles.stripValue, { color: aw.color }]}>
+            {acwr != null ? acwr.toFixed(2) : '—'}
+          </Text>
+          <Text style={[styles.stripZone, { color: aw.color }]}>{aw.label}</Text>
         </View>
 
-        <View style={styles.gridCard}>
-          <Text style={styles.cardLabel}>MUSCLE RISK</Text>
-          <View style={styles.barsArea}>
-            <LoadBar label="Leg Risk" current={legMuscularRisk} max={100} color={tokens.color.danger} />
-            <LoadBar label="Body"     current={totalBodyFatigue} max={100} color={tokens.color.warning} />
-          </View>
+        <View style={styles.stripDivider} />
+
+        <View style={styles.stripChip}>
+          <Text style={styles.stripLabel}>LEG RISK</Text>
+          <Text style={[styles.stripValue, { color: lmr.color }]}>
+            {Math.round(legMuscularRisk)}
+          </Text>
+          <Text style={[styles.stripZone, { color: lmr.color }]}>{lmr.label}</Text>
+        </View>
+
+        <View style={styles.stripDivider} />
+
+        <View style={styles.stripChip}>
+          <Text style={styles.stripLabel}>BODY FAT.</Text>
+          <Text style={[styles.stripValue, { color: tbf.color }]}>
+            {Math.round(totalBodyFatigue)}
+          </Text>
+          <Text style={[styles.stripZone, { color: tbf.color }]}>{tbf.label}</Text>
         </View>
       </View>
 
@@ -122,6 +140,8 @@ const styles = StyleSheet.create({
   container: {
     marginBottom: tokens.space.sm,
   },
+
+  /* Hero */
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -144,28 +164,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
-  statHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
-    paddingRight: tokens.space.sm,
-  },
-  acwrBadge: {
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-  },
-  acwrText: {
-    fontSize: 9,
-    fontWeight: '800',
-  },
   statLabel: {
     fontSize: 9,
     fontWeight: '800',
     color: tokens.color.textTertiary,
     letterSpacing: 1.8,
+    marginBottom: 2,
   },
   statValueRow: {
     flexDirection: 'row',
@@ -188,6 +192,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.border,
     marginVertical: 2,
   },
+
+  /* Status row */
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -225,44 +231,45 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.xs,
     fontWeight: '600',
   },
-  grid: {
+
+  /* Metrics strip */
+  strip: {
     flexDirection: 'row',
-    gap: tokens.space.sm,
-    marginBottom: tokens.space.sm,
-    alignItems: 'stretch',
-  },
-  gridCard: {
-    flex: 1,
     backgroundColor: tokens.color.surface,
     borderRadius: tokens.radius.md,
     borderWidth: 1,
     borderColor: tokens.color.border,
-    padding: tokens.space.md,
+    marginBottom: tokens.space.sm,
+    overflow: 'hidden',
   },
-  cardLabel: {
+  stripChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: tokens.space.xs,
+  },
+  stripLabel: {
     fontSize: 8,
     fontWeight: '800',
     color: tokens.color.textTertiary,
-    letterSpacing: 1.5,
-    marginBottom: 6,
+    letterSpacing: 1.2,
+    marginBottom: 5,
   },
-  sparklineArea: {
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
+  stripValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    lineHeight: 26,
   },
-  barsArea: {
-    gap: 10,
+  stripZone: {
+    fontSize: 9,
+    fontWeight: '700',
+    marginTop: 3,
+    letterSpacing: 0.2,
   },
-  cardSub: {
-    fontSize: 8,
-    color: tokens.color.textTertiary,
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  emptyText: {
-    fontSize: 10,
-    color: tokens.color.textTertiary,
-    fontStyle: 'italic',
+  stripDivider: {
+    width: 1,
+    backgroundColor: tokens.color.border,
+    marginVertical: tokens.space.sm,
   },
 });

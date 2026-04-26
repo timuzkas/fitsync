@@ -191,11 +191,6 @@ function HomeScreen({ navigation }: any) {
     );
   }
 
-  const history7d = loadData?.recentWorkouts
-    ?.slice(0, 7)
-    ?.reverse()
-    ?.map((w: any) => (w.rpe && w.durationSec) ? Math.round(w.rpe * (w.durationSec / 60)) : 0) || [];
-
   const weekStart = (() => { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1)); return d; })();
   const weekWorkouts = workouts.filter(w => new Date(w.startedAt) >= weekStart);
   const weekSessions = weekWorkouts.length;
@@ -263,7 +258,6 @@ function HomeScreen({ navigation }: any) {
             load7d={loadData.load7d ? Object.values(loadData.load7d).reduce((a: number, b: any) => a + b, 0) : 0}
             load28d={loadData.load28d ? Object.values(loadData.load28d).reduce((a: number, b: any) => a + b, 0) : 0}
             acwr={loadData.acwr}
-            history7d={history7d}
             legMuscularRisk={loadData.legMuscularRisk}
             totalBodyFatigue={loadData.totalBodyFatigue}
             onCalibrate={() => {
