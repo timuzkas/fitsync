@@ -27,6 +27,31 @@ import WellnessCalibrationScreen from './src/screens/WellnessCalibrationScreen';
 
 const Stack = createNativeStackNavigator();
 
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function groupWorkoutsByDate(workouts: any[]) {
+  const groups: { label: string; key: string; items: any[] }[] = [];
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today.getTime() - 86400000);
+  for (const w of workouts) {
+    const d = new Date(w.startedAt); d.setHours(0, 0, 0, 0);
+    const key = d.toISOString();
+    let label: string;
+    if (d.getTime() === today.getTime()) label = 'Today';
+    else if (d.getTime() === yesterday.getTime()) label = 'Yesterday';
+    else label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const existing = groups.find(g => g.key === key);
+    if (existing) existing.items.push(w);
+    else groups.push({ label, key, items: [w] });
+  }
+  return groups;
+}
+
 function HomeScreen({ navigation }: any) {
   const { deviceId, deviceSecret, isLoading: regLoading, target, _hasHydrated, planConfig, updatePlanConfig, wellness, wellnessCalibrationHours } = useDeviceStore();
   const [workouts, setWorkouts] = useState<any[]>([]);
@@ -170,6 +195,14 @@ function HomeScreen({ navigation }: any) {
     ?.reverse()
     ?.map((w: any) => (w.rpe && w.durationSec) ? Math.round(w.rpe * (w.durationSec / 60)) : 0) || [];
 
+  const weekStart = (() => { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1)); return d; })();
+  const weekWorkouts = workouts.filter(w => new Date(w.startedAt) >= weekStart);
+  const weekSessions = weekWorkouts.length;
+  const weekKm = weekWorkouts.reduce((s, w) => s + (w.distanceM || 0) / 1000, 0);
+  const weekLoad = weekWorkouts.reduce((s, w) => s + (w.rpe && w.durationSec ? Math.round(w.rpe * w.durationSec / 60) : 0), 0);
+
+  const daysToRace = target ? Math.ceil((new Date(target.targetDate).getTime() - Date.now()) / 86400000) : null;
+
   const isWellnessToday = wellness?.calibratedAt
     ? new Date(wellness.calibratedAt).toDateString() === new Date().toDateString()
     : false;
@@ -182,20 +215,21 @@ function HomeScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
+      {/* ── Header ── */}
       <View style={styles.header}>
-        <Text style={[styles.title, { fontFamily: 'NicoMoji' }]}>Fitsync</Text>
+        <View>
+          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <Text style={styles.headerDate}>
+            {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+          </Text>
+        </View>
         <View style={styles.headerBtns}>
           <TouchableOpacity
             style={styles.headerBtn}
-            onPress={() => navigation.navigate('Plan')}
+            onPress={handleSync}
+            disabled={syncing}
           >
-            <Text style={styles.headerBtnText}>🎯</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerBtn}
-            onPress={() => navigation.navigate('AddWorkout')}
-          >
-            <Text style={[styles.headerBtnText, styles.addBtnText]}>+</Text>
+            <Text style={[styles.headerBtnText, syncing && { opacity: 0.35 }]}>↻</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBtn}
@@ -221,6 +255,7 @@ function HomeScreen({ navigation }: any) {
           />
         }
       >
+        {/* ── Load dashboard ── */}
         {loadData && (
           <LoadDashboard
             readiness={effectiveReadiness}
@@ -230,126 +265,130 @@ function HomeScreen({ navigation }: any) {
             history7d={history7d}
             legMuscularRisk={loadData.legMuscularRisk}
             totalBodyFatigue={loadData.totalBodyFatigue}
+            onCalibrate={() => {
+              if (inCalibrationWindow) {
+                navigation.navigate('WellnessCalibration');
+              } else {
+                Alert.alert('Calibration Unavailable', `Available between ${winStart}:00 and ${winEnd}:00. Adjust in Settings.`);
+              }
+            }}
+            calibrateEnabled={inCalibrationWindow}
+            isWellnessActive={isWellnessToday}
           />
         )}
 
-        <TouchableOpacity
-          style={[styles.calibrateBtn, !inCalibrationWindow && styles.calibrateBtnDisabled]}
-          onPress={() => {
-            if (inCalibrationWindow) {
-              navigation.navigate('WellnessCalibration');
-            } else {
-              Alert.alert(
-                'Calibration Unavailable',
-                `Wellness calibration is available between ${winStart}:00 and ${winEnd}:00. Check Settings to adjust the window.`
-              );
-            }
-          }}
-          activeOpacity={inCalibrationWindow ? 0.7 : 1}
-        >
-          <View style={styles.calibrateBtnInner}>
-            <Text style={[styles.calibrateBtnText, !inCalibrationWindow && styles.calibrateBtnTextDim]}>
-              {isWellnessToday ? 'Re-calibrate Wellness' : 'Calibrate Readiness'}
-            </Text>
-            {isWellnessToday && (
-              <View style={styles.calibrateBadge}>
-                <Text style={styles.calibrateBadgeText}>Wellness active</Text>
-              </View>
-            )}
-            {!inCalibrationWindow && (
-              <Text style={styles.calibrateWindowText}>{winStart}:00 – {winEnd}:00</Text>
-            )}
-          </View>
-        </TouchableOpacity>
-
-        {_hasHydrated && target ? (
-          <TouchableOpacity 
-            style={styles.planCard}
-            onPress={() => navigation.navigate('Plan')}
+        {/* ── Race countdown pill ── */}
+        {_hasHydrated && (
+          <TouchableOpacity
+            style={styles.racePill}
+            onPress={() => navigation.navigate(target ? 'Plan' : 'Target')}
+            activeOpacity={0.75}
           >
-            <View style={styles.planCardIcon}>
-              <Text style={styles.planCardIconText}>📋</Text>
-            </View>
-            <View style={styles.planCardContent}>
-              <Text style={styles.planCardTitle}>
-                {target.distanceKm}K {target.type === 'run' ? 'Run' : target.type === 'ride' ? 'Ride' : 'Swim'}
-              </Text>
-              <Text style={styles.planCardSub}>
-                {Math.ceil((new Date(target.targetDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days to go
-              </Text>
-            </View>
-            <Text style={styles.planCardArrow}>→</Text>
+            {target && daysToRace != null && daysToRace > 0 ? (
+              <>
+                <Text style={styles.racePillIcon}>🎯</Text>
+                <Text style={styles.racePillText}>{target.distanceKm}K</Text>
+                <Text style={styles.racePillSep}>·</Text>
+                <Text style={styles.racePillDays}>{daysToRace} days</Text>
+                <Text style={styles.racePillArrow}>→</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.racePillIcon}>🏁</Text>
+                <Text style={[styles.racePillText, { color: tokens.color.textMuted }]}>Set a race goal</Text>
+                <Text style={styles.racePillArrow}>→</Text>
+              </>
+            )}
           </TouchableOpacity>
-        ) : (
-          <View>
-            <TouchableOpacity 
-              style={styles.planCard}
-              onPress={() => navigation.navigate('Target')}
-            >
-              <View style={styles.planCardIcon}>
-                <Text style={styles.planCardIconText}>🏃</Text>
-              </View>
-              <View style={styles.planCardContent}>
-                <Text style={styles.planCardTitle}>Set Your Running Goal</Text>
-                <Text style={styles.planCardSub}>Create a training plan for your next race</Text>
-              </View>
-              <Text style={styles.planCardArrow}>→</Text>
-            </TouchableOpacity>
+        )}
+
+        {/* ── Week summary strip ── */}
+        {workouts.length > 0 && (
+          <View style={styles.weekStrip}>
+            <View style={styles.weekChip}>
+              <Text style={styles.weekChipNum}>{weekSessions}</Text>
+              <Text style={styles.weekChipLabel}>sessions</Text>
+            </View>
+            <View style={styles.weekDivider} />
+            <View style={styles.weekChip}>
+              <Text style={styles.weekChipNum}>{weekKm.toFixed(1)}</Text>
+              <Text style={styles.weekChipLabel}>km this week</Text>
+            </View>
+            <View style={styles.weekDivider} />
+            <View style={styles.weekChip}>
+              <Text style={styles.weekChipNum}>{weekLoad}</Text>
+              <Text style={styles.weekChipLabel}>load pts</Text>
+            </View>
           </View>
         )}
 
+        {/* ── Recent workouts ── */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Today's Workouts</Text>
-          <TouchableOpacity onPress={handleSync} disabled={syncing}>
-            <Text style={[styles.syncBtn, syncing && styles.syncBtnDisabled]}>
-              {syncing ? '...' : 'Sync ↻'}
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>Recent</Text>
         </View>
 
         {workouts.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🏋️</Text>
             <Text style={styles.emptyTitle}>No workouts yet</Text>
-            <Text style={styles.emptySub}>Sync from Strava or add manually</Text>
+            <Text style={styles.emptySub}>Connect Strava or log manually</Text>
+            <TouchableOpacity style={styles.emptyBtn} onPress={handleSync} disabled={syncing}>
+              <Text style={styles.emptyBtnText}>{syncing ? 'Syncing…' : 'Sync from Strava'}</Text>
+            </TouchableOpacity>
           </View>
         ) : (
-          workouts.map((w) => <WorkoutCard key={w.id} workout={w} onDelete={handleDeleteWorkout} />)
+          groupWorkoutsByDate(workouts).map(group => (
+            <View key={group.key}>
+              <Text style={styles.groupHeader}>{group.label}</Text>
+              {group.items.map(w => (
+                <WorkoutCard key={w.id} workout={w} onDelete={handleDeleteWorkout} />
+              ))}
+            </View>
+          ))
         )}
 
+        {/* ── Upcoming planned ── */}
         {plannedWorkouts.length > 0 && (
           <>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Planned</Text>
+              <Text style={styles.sectionTitle}>Upcoming</Text>
             </View>
-            {plannedWorkouts.slice(0, 3).map((w) => (
-              <TouchableOpacity
-                key={w.id}
-                style={styles.plannedCard}
-                onPress={() => {
-                  Alert.alert(
-                    w.title || 'Planned Workout',
-                    `${new Date(w.startedAt).toLocaleDateString()}${w.distanceM ? ` • ${(w.distanceM/1000).toFixed(1)}km` : ''}`,
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: w }) },
-                      { text: 'Delete', style: 'destructive', onPress: async () => {
-                        try {
-                          await api.deleteWorkout(deviceId, deviceSecret, w.id);
-                          fetchPlanned();
-                        } catch (e) { Alert.alert('Error', 'Failed to delete'); }
-                      }},
-                    ]
-                  );
-                }}
-              >
-                <Text style={styles.plannedCardTitle}>{w.title || 'Planned Workout'}</Text>
-                <Text style={styles.plannedCardDate}>
-                  {new Date(w.startedAt).toLocaleDateString()}
-                  {w.distanceM && ` • ${(w.distanceM/1000).toFixed(1)}km`}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {plannedWorkouts.slice(0, 2).map((w) => {
+              const d = new Date(w.startedAt);
+              return (
+                <TouchableOpacity
+                  key={w.id}
+                  style={styles.upcomingCard}
+                  onPress={() =>
+                    Alert.alert(
+                      w.title || 'Planned Workout',
+                      `${d.toLocaleDateString()}${w.distanceM ? ` • ${(w.distanceM / 1000).toFixed(1)}km` : ''}`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: w }) },
+                        { text: 'Delete', style: 'destructive', onPress: async () => {
+                          try { await api.deleteWorkout(deviceId, deviceSecret, w.id); fetchPlanned(); }
+                          catch { Alert.alert('Error', 'Failed to delete'); }
+                        }},
+                      ]
+                    )
+                  }
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.upcomingDateBadge}>
+                    <Text style={styles.upcomingDay}>{d.getDate()}</Text>
+                    <Text style={styles.upcomingMonth}>{d.toLocaleDateString('en-US', { month: 'short' })}</Text>
+                  </View>
+                  <View style={styles.upcomingBody}>
+                    <Text style={styles.upcomingTitle}>{w.title || 'Planned Workout'}</Text>
+                    {w.distanceM ? (
+                      <Text style={styles.upcomingMeta}>{(w.distanceM / 1000).toFixed(1)} km</Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.upcomingArrow}>›</Text>
+                </TouchableOpacity>
+              );
+            })}
           </>
         )}
 
@@ -370,18 +409,27 @@ function HomeScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: tokens.color.bg },
   container: { flex: 1, backgroundColor: tokens.color.bg },
+
+  /* Header */
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     paddingHorizontal: tokens.space.md,
     paddingTop: 60,
     paddingBottom: tokens.space.md,
   },
-  title: {
-    fontSize: tokens.font.xxl,
-    fontWeight: 'bold',
+  greeting: {
+    fontSize: tokens.font.xl,
+    fontWeight: '700',
     color: tokens.color.textPrimary,
+    letterSpacing: -0.3,
+  },
+  headerDate: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    fontWeight: '500',
+    marginTop: 2,
   },
   headerBtns: {
     flexDirection: 'row',
@@ -400,44 +448,115 @@ const styles = StyleSheet.create({
   headerBtnText: {
     fontSize: tokens.font.md,
   },
-  addBtnText: {
-    color: '#fff',
-  },
-  content: {
-    flex: 1,
-  },
+
+  /* Scroll */
+  content: { flex: 1 },
   contentContainer: {
     paddingHorizontal: tokens.space.md,
-    paddingTop: tokens.space.sm,
+    paddingTop: tokens.space.xs,
   },
+
+  /* Race pill */
+  racePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    marginBottom: tokens.space.sm,
+    gap: 6,
+  },
+  racePillIcon: { fontSize: 14 },
+  racePillText: {
+    fontSize: tokens.font.sm,
+    fontWeight: '700',
+    color: tokens.color.textPrimary,
+  },
+  racePillSep: {
+    fontSize: tokens.font.sm,
+    color: tokens.color.textTertiary,
+  },
+  racePillDays: {
+    fontSize: tokens.font.sm,
+    fontWeight: '600',
+    color: tokens.color.primary,
+    flex: 1,
+  },
+  racePillArrow: {
+    fontSize: tokens.font.md,
+    color: tokens.color.textTertiary,
+  },
+
+  /* Week strip */
+  weekStrip: {
+    flexDirection: 'row',
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    marginBottom: tokens.space.sm,
+    overflow: 'hidden',
+  },
+  weekChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: tokens.space.sm,
+  },
+  weekChipNum: {
+    fontSize: tokens.font.lg,
+    fontWeight: '800',
+    color: tokens.color.textPrimary,
+    letterSpacing: -0.5,
+  },
+  weekChipLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: tokens.color.textTertiary,
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  weekDivider: {
+    width: 1,
+    backgroundColor: tokens.color.border,
+    marginVertical: tokens.space.sm,
+  },
+
+  /* Section headers */
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: tokens.space.sm,
-    marginTop: tokens.space.md,
+    marginTop: tokens.space.xs,
   },
   sectionTitle: {
-    fontSize: tokens.font.sm,
-    fontWeight: '600',
-    color: tokens.color.textMuted,
+    fontSize: 10,
+    fontWeight: '800',
+    color: tokens.color.textTertiary,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 1.5,
   },
-  syncBtn: {
-    fontSize: tokens.font.sm,
-    color: tokens.color.primary,
-    fontWeight: '600',
+
+  /* Date group header */
+  groupHeader: {
+    fontSize: tokens.font.xs,
+    fontWeight: '700',
+    color: tokens.color.textMuted,
+    letterSpacing: 0.5,
+    marginBottom: tokens.space.xs,
+    marginTop: tokens.space.sm,
   },
-  syncBtnDisabled: {
-    opacity: 0.4,
-  },
+
+  /* Empty state */
   emptyState: {
     alignItems: 'center',
     paddingVertical: tokens.space.xl,
   },
   emptyIcon: {
-    fontSize: 48,
+    fontSize: 44,
     marginBottom: tokens.space.sm,
   },
   emptyTitle: {
@@ -449,7 +568,73 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.sm,
     color: tokens.color.textMuted,
     marginTop: 4,
+    marginBottom: tokens.space.md,
   },
+  emptyBtn: {
+    backgroundColor: tokens.color.primary,
+    borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.sm,
+  },
+  emptyBtnText: {
+    color: '#fff',
+    fontSize: tokens.font.sm,
+    fontWeight: '700',
+  },
+
+  /* Upcoming cards */
+  upcomingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    borderStyle: 'dashed',
+    padding: tokens.space.md,
+    marginBottom: tokens.space.sm,
+    gap: tokens.space.md,
+  },
+  upcomingDateBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.color.elevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  upcomingDay: {
+    fontSize: tokens.font.md,
+    fontWeight: '800',
+    color: tokens.color.textPrimary,
+    lineHeight: 18,
+  },
+  upcomingMonth: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: tokens.color.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  upcomingBody: { flex: 1 },
+  upcomingTitle: {
+    fontSize: tokens.font.sm,
+    fontWeight: '600',
+    color: tokens.color.textSecondary,
+  },
+  upcomingMeta: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    marginTop: 2,
+  },
+  upcomingArrow: {
+    fontSize: 20,
+    color: tokens.color.textTertiary,
+    fontWeight: '300',
+  },
+
+  /* FAB */
   fab: {
     position: 'absolute',
     bottom: tokens.space.lg,
@@ -471,96 +656,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '300',
     marginTop: -2,
-  },
-  planCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: tokens.color.surface,
-    borderRadius: tokens.radius.md, padding: tokens.space.md, marginBottom: tokens.space.md,
-    borderWidth: 1, borderColor: tokens.color.border,
-  },
-  planCardIcon: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: tokens.color.primaryMuted,
-    alignItems: 'center', justifyContent: 'center', marginRight: tokens.space.md,
-  },
-  planCardIconText: { fontSize: 22 },
-  planCardContent: { flex: 1 },
-  planCardTitle: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
-  planCardSub: { fontSize: tokens.font.xs, color: tokens.color.textMuted, marginTop: 2 },
-  planCardArrow: { fontSize: tokens.font.lg, color: tokens.color.textMuted },
-  secondarySettingsBtn: {
-    alignSelf: 'center',
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    backgroundColor: tokens.color.surface,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1,
-    borderColor: tokens.color.border,
-    marginTop: -tokens.space.xs,
-    marginBottom: tokens.space.md,
-  },
-  secondarySettingsText: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textSecondary,
-    fontWeight: '600',
-  },
-  plannedCard: {
-    backgroundColor: tokens.color.surface,
-    borderRadius: tokens.radius.md,
-    padding: tokens.space.md,
-    marginBottom: tokens.space.sm,
-    borderWidth: 1,
-    borderColor: tokens.color.border,
-    opacity: 0.6,
-  },
-  plannedCardTitle: {
-    fontSize: tokens.font.md,
-    fontWeight: '600',
-    color: tokens.color.textPrimary,
-  },
-  plannedCardDate: {
-    fontSize: tokens.font.sm,
-    color: tokens.color.textMuted,
-    marginTop: 2,
-  },
-  calibrateBtn: {
-    backgroundColor: tokens.color.surface,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.color.border,
-    padding: tokens.space.sm,
-    marginBottom: tokens.space.md,
-    marginTop: -tokens.space.xs,
-  },
-  calibrateBtnDisabled: {
-    opacity: 0.5,
-  },
-  calibrateBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: tokens.space.xs,
-  },
-  calibrateBtnText: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.primary,
-    fontWeight: '600',
-  },
-  calibrateBtnTextDim: {
-    color: tokens.color.textMuted,
-  },
-  calibrateBadge: {
-    backgroundColor: tokens.color.primaryMuted,
-    borderRadius: tokens.radius.full,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  calibrateBadgeText: {
-    fontSize: 9,
-    color: tokens.color.primary,
-    fontWeight: '700',
-  },
-  calibrateWindowText: {
-    fontSize: 9,
-    color: tokens.color.textTertiary,
-    marginLeft: 'auto',
   },
 });
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { LoadBar } from '../ui/LoadBar';
 import { MetricRing } from '../ui/MetricRing';
 import { LoadSparkline } from '../charts/LoadSparkline';
@@ -13,9 +13,12 @@ interface LoadDashboardProps {
   history7d?: number[];
   legMuscularRisk?: number;
   totalBodyFatigue?: number;
+  onCalibrate?: () => void;
+  calibrateEnabled?: boolean;
+  isWellnessActive?: boolean;
 }
 
-export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, legMuscularRisk = 0, totalBodyFatigue = 0 }: LoadDashboardProps) {
+export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, legMuscularRisk = 0, totalBodyFatigue = 0, onCalibrate, calibrateEnabled, isWellnessActive }: LoadDashboardProps) {
   const readinessLabel =
     readiness > 70 ? 'Ready to train' :
     readiness > 40 ? 'Light session only' :
@@ -26,8 +29,7 @@ export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, leg
     readiness > 40 ? tokens.color.warning :
     tokens.color.danger;
 
-  // ACWR Color mapping
-  const acwrColor = 
+  const acwrColor =
     !acwr ? tokens.color.textMuted :
     acwr > 1.5 ? tokens.color.danger :
     acwr > 1.3 ? tokens.color.warning :
@@ -39,12 +41,10 @@ export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, leg
 
       {/* ── Hero: ring + load numbers ── */}
       <View style={styles.heroRow}>
-        {/* Ring — explicit size so it never stretches */}
         <View style={styles.ringWrap}>
           <MetricRing value={readiness} label="Readiness" size={138} strokeWidth={16} />
         </View>
 
-        {/* Load stats */}
         <View style={styles.statsCol}>
           <View style={styles.statItem}>
             <View style={styles.statHeader}>
@@ -73,13 +73,25 @@ export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, leg
         </View>
       </View>
 
-      {/* ── Status pill ── */}
+      {/* ── Status + calibrate row ── */}
       <View style={styles.statusRow}>
         <View style={[styles.statusDot, { backgroundColor: readinessColor }]} />
         <Text style={[styles.statusText, { color: readinessColor }]}>{readinessLabel}</Text>
+        {isWellnessActive && (
+          <View style={styles.wellnessBadge}>
+            <Text style={styles.wellnessBadgeText}>Wellness</Text>
+          </View>
+        )}
+        {onCalibrate && (
+          <TouchableOpacity onPress={onCalibrate} style={styles.calibrateLink} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={[styles.calibrateLinkText, { color: calibrateEnabled ? tokens.color.primary : tokens.color.textTertiary }]}>
+              {isWellnessActive ? 'Re-calibrate' : 'Calibrate'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* ── Bottom grid: sparkline | system stress ── */}
+      {/* ── Bottom grid: sparkline | muscle risk ── */}
       <View style={styles.grid}>
         <View style={styles.gridCard}>
           <Text style={styles.cardLabel}>LOAD TREND</Text>
@@ -96,8 +108,8 @@ export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, leg
         <View style={styles.gridCard}>
           <Text style={styles.cardLabel}>MUSCLE RISK</Text>
           <View style={styles.barsArea}>
-            <LoadBar label="Leg Risk"  current={legMuscularRisk}  max={100} color={tokens.color.danger} />
-            <LoadBar label="Body"      current={totalBodyFatigue}  max={100} color={tokens.color.warning} />
+            <LoadBar label="Leg Risk" current={legMuscularRisk} max={100} color={tokens.color.danger} />
+            <LoadBar label="Body"     current={totalBodyFatigue} max={100} color={tokens.color.warning} />
           </View>
         </View>
       </View>
@@ -108,10 +120,8 @@ export function LoadDashboard({ readiness, load7d, load28d, acwr, history7d, leg
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: tokens.space.md,
+    marginBottom: tokens.space.sm,
   },
-
-  /* Hero row */
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -119,7 +129,6 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xs,
   },
   ringWrap: {
-    // Hard-size the ring so it cannot stretch the row
     width: 138,
     height: 138,
     alignItems: 'center',
@@ -128,7 +137,6 @@ const styles = StyleSheet.create({
   },
   statsCol: {
     flex: 1,
-    // Match ring height so items distribute evenly
     height: 138,
     justifyContent: 'center',
   },
@@ -180,14 +188,12 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.border,
     marginVertical: 2,
   },
-
-  /* Status */
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     marginTop: 6,
-    marginBottom: tokens.space.md,
+    marginBottom: tokens.space.sm,
     paddingLeft: 2,
   },
   statusDot: {
@@ -199,12 +205,30 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.xs,
     fontWeight: '600',
     letterSpacing: 0.2,
+    flex: 1,
   },
-
-  /* Bottom grid */
+  wellnessBadge: {
+    backgroundColor: tokens.color.primaryMuted,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  wellnessBadgeText: {
+    fontSize: 9,
+    color: tokens.color.primary,
+    fontWeight: '700',
+  },
+  calibrateLink: {
+    paddingLeft: tokens.space.xs,
+  },
+  calibrateLinkText: {
+    fontSize: tokens.font.xs,
+    fontWeight: '600',
+  },
   grid: {
     flexDirection: 'row',
     gap: tokens.space.sm,
+    marginBottom: tokens.space.sm,
   },
   gridCard: {
     flex: 1,
@@ -213,7 +237,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.color.border,
     padding: tokens.space.md,
-    // Fixed height so both cards match
     height: 120,
   },
   cardLabel: {
