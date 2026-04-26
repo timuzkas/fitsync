@@ -4,6 +4,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   RefreshControl, Alert, ActivityIndicator
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -225,17 +226,17 @@ function HomeScreen({ navigation }: any) {
         </View>
         <View style={styles.headerBtns}>
           <TouchableOpacity
-            style={styles.headerBtn}
+            style={[styles.headerBtn, syncing && { opacity: 0.35 }]}
             onPress={handleSync}
             disabled={syncing}
           >
-            <Text style={[styles.headerBtnText, syncing && { opacity: 0.35 }]}>↻</Text>
+            <Ionicons name="refresh" size={18} color={tokens.color.textSecondary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBtn}
             onPress={() => navigation.navigate('Settings')}
           >
-            <Text style={styles.headerBtnText}>⚙️</Text>
+            <Ionicons name="settings-outline" size={18} color={tokens.color.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -277,27 +278,58 @@ function HomeScreen({ navigation }: any) {
           />
         )}
 
-        {/* ── Race countdown pill ── */}
+        {/* ── Race card ── */}
         {_hasHydrated && (
           <TouchableOpacity
-            style={styles.racePill}
+            style={styles.raceCard}
             onPress={() => navigation.navigate(target ? 'Plan' : 'Target')}
             activeOpacity={0.75}
           >
             {target && daysToRace != null && daysToRace > 0 ? (
               <>
-                <Text style={styles.racePillIcon}>🎯</Text>
-                <Text style={styles.racePillText}>{target.distanceKm}K</Text>
-                <Text style={styles.racePillSep}>·</Text>
-                <Text style={styles.racePillDays}>{daysToRace} days</Text>
-                <Text style={styles.racePillArrow}>→</Text>
+                <View style={styles.raceCardTop}>
+                  <View style={styles.raceCardLeft}>
+                    <Text style={styles.raceCardLabel}>GOAL RACE</Text>
+                    <Text style={styles.raceCardTitle}>
+                      {target.distanceKm}K {target.type === 'run' ? 'Run' : target.type === 'ride' ? 'Ride' : 'Swim'}
+                    </Text>
+                    <Text style={styles.raceCardDate}>
+                      {new Date(target.targetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </Text>
+                  </View>
+                  <View style={styles.raceCardDaysWrap}>
+                    <Text style={styles.raceCardDaysNum}>{daysToRace}</Text>
+                    <Text style={styles.raceCardDaysLabel}>days</Text>
+                  </View>
+                </View>
+                {plannedWorkouts[0] && (
+                  <View style={styles.raceCardNext}>
+                    <Text style={styles.raceCardNextLabel}>NEXT PLANNED</Text>
+                    <View style={styles.raceCardNextRow}>
+                      <View style={[styles.raceCardNextDot, { backgroundColor: tokens.color.primary }]} />
+                      <Text style={styles.raceCardNextText}>
+                        {plannedWorkouts[0].title || (plannedWorkouts[0].type.charAt(0).toUpperCase() + plannedWorkouts[0].type.slice(1))}
+                      </Text>
+                      <Text style={styles.raceCardNextSep}>·</Text>
+                      <Text style={styles.raceCardNextMeta}>
+                        {new Date(plannedWorkouts[0].startedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </Text>
+                      {plannedWorkouts[0].distanceM ? (
+                        <>
+                          <Text style={styles.raceCardNextSep}>·</Text>
+                          <Text style={styles.raceCardNextMeta}>{(plannedWorkouts[0].distanceM / 1000).toFixed(1)} km</Text>
+                        </>
+                      ) : null}
+                    </View>
+                  </View>
+                )}
               </>
             ) : (
-              <>
-                <Text style={styles.racePillIcon}>🏁</Text>
-                <Text style={[styles.racePillText, { color: tokens.color.textMuted }]}>Set a race goal</Text>
-                <Text style={styles.racePillArrow}>→</Text>
-              </>
+              <View style={styles.raceCardEmpty}>
+                <Ionicons name="flag-outline" size={20} color={tokens.color.textTertiary} />
+                <Text style={styles.raceCardEmptyText}>Set a race goal</Text>
+                <Ionicons name="chevron-forward" size={16} color={tokens.color.textTertiary} style={{ marginLeft: 'auto' }} />
+              </View>
             )}
           </TouchableOpacity>
         )}
@@ -456,38 +488,110 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xs,
   },
 
-  /* Race pill */
-  racePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  /* Race card */
+  raceCard: {
     backgroundColor: tokens.color.surface,
     borderRadius: tokens.radius.md,
     borderWidth: 1,
     borderColor: tokens.color.border,
+    marginBottom: tokens.space.sm,
+    overflow: 'hidden',
+  },
+  raceCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: tokens.space.md,
+    gap: tokens.space.md,
+  },
+  raceCardLeft: { flex: 1 },
+  raceCardLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: tokens.color.textTertiary,
+    letterSpacing: 1.5,
+    marginBottom: 3,
+  },
+  raceCardTitle: {
+    fontSize: tokens.font.lg,
+    fontWeight: '800',
+    color: tokens.color.textPrimary,
+    letterSpacing: -0.3,
+  },
+  raceCardDate: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    marginTop: 2,
+  },
+  raceCardDaysWrap: {
+    alignItems: 'center',
+    backgroundColor: tokens.color.primaryMuted,
+    borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    marginBottom: tokens.space.sm,
-    gap: 6,
+    minWidth: 56,
   },
-  racePillIcon: { fontSize: 14 },
-  racePillText: {
-    fontSize: tokens.font.sm,
-    fontWeight: '700',
-    color: tokens.color.textPrimary,
-  },
-  racePillSep: {
-    fontSize: tokens.font.sm,
-    color: tokens.color.textTertiary,
-  },
-  racePillDays: {
-    fontSize: tokens.font.sm,
-    fontWeight: '600',
+  raceCardDaysNum: {
+    fontSize: 26,
+    fontWeight: '800',
     color: tokens.color.primary,
-    flex: 1,
+    letterSpacing: -1,
+    lineHeight: 30,
   },
-  racePillArrow: {
-    fontSize: tokens.font.md,
+  raceCardDaysLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: tokens.color.primary,
+    letterSpacing: 0.5,
+    opacity: 0.75,
+  },
+  raceCardNext: {
+    borderTopWidth: 1,
+    borderTopColor: tokens.color.border,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+  },
+  raceCardNextLabel: {
+    fontSize: 8,
+    fontWeight: '800',
     color: tokens.color.textTertiary,
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  raceCardNextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flexWrap: 'wrap',
+  },
+  raceCardNextDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  raceCardNextText: {
+    fontSize: tokens.font.xs,
+    fontWeight: '700',
+    color: tokens.color.textSecondary,
+  },
+  raceCardNextSep: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textTertiary,
+  },
+  raceCardNextMeta: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+  },
+  raceCardEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: tokens.space.md,
+    gap: tokens.space.sm,
+  },
+  raceCardEmptyText: {
+    fontSize: tokens.font.sm,
+    color: tokens.color.textMuted,
+    fontWeight: '500',
+    flex: 1,
   },
 
   /* Week strip */

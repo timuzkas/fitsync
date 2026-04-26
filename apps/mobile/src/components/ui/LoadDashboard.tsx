@@ -229,6 +229,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: tokens.space.sm,
     marginBottom: tokens.space.sm,
+    alignItems: 'stretch',
   },
   gridCard: {
     flex: 1,
@@ -237,23 +238,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.color.border,
     padding: tokens.space.md,
-    height: 120,
   },
   cardLabel: {
     fontSize: 8,
     fontWeight: '800',
     color: tokens.color.textTertiary,
     letterSpacing: 1.5,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   sparklineArea: {
-    flex: 1,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
   },
   barsArea: {
-    flex: 1,
-    justifyContent: 'space-between',
+    gap: 10,
   },
   cardSub: {
     fontSize: 8,
