@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput, Switch
+  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  Alert, TextInput, Switch, StyleSheet as RN,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { tokens } from '../tokens';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { api } from '../api/client';
@@ -30,7 +32,11 @@ const DAYS = [
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { deviceId, deviceSecret, athleteProfile, setAthleteProfile, planConfig, setPlanConfig, target, wellnessCalibrationHours, setWellnessCalibrationHours } = useDeviceStore();
+  const {
+    deviceId, deviceSecret, athleteProfile, setAthleteProfile,
+    planConfig, setPlanConfig, target,
+    wellnessCalibrationHours, setWellnessCalibrationHours,
+  } = useDeviceStore();
 
   const [freeDays, setFreeDays] = useState<string[]>(planConfig?.freeDays || ['mon', 'wed', 'fri']);
   const [winStart, setWinStart] = useState(String(wellnessCalibrationHours?.start ?? 6));
@@ -78,286 +84,288 @@ export default function SettingsScreen() {
     );
   }
 
-  function saveHR() {
-    const max = parseInt(maxHR);
-    const rest = parseInt(restHR);
-    
-    if (maxHR && (isNaN(max) || max < 100 || max > 220)) {
-      Alert.alert('Invalid Max HR', 'Max HR should be between 100-220 BPM');
-      return;
+  function saveAll() {
+    // Validate HR
+    if (maxHR) {
+      const max = parseInt(maxHR);
+      if (isNaN(max) || max < 100 || max > 220) {
+        Alert.alert('Invalid Max HR', 'Must be between 100–220 bpm');
+        return;
+      }
     }
-    if (restHR && (isNaN(rest) || rest < 30 || rest > 100)) {
-      Alert.alert('Invalid Rest HR', 'Resting HR should be between 30-100 BPM');
-      return;
+    if (restHR) {
+      const rest = parseInt(restHR);
+      if (isNaN(rest) || rest < 30 || rest > 100) {
+        Alert.alert('Invalid Resting HR', 'Must be between 30–100 bpm');
+        return;
+      }
     }
 
-    const profile = {
-      ...athleteProfile,
-      maxHR: maxHR ? max : undefined,
-      restHR: restHR ? rest : undefined,
-    };
-    setAthleteProfile(profile);
-    Alert.alert('Saved', 'Heart rate settings updated');
-  }
-
-  function savePlanSettings() {
-    if (freeDays.length === 0) {
-      Alert.alert('Select Training Days', 'Pick at least one day you can run.');
-      return;
-    }
-    
-    const newConfig = {
-      ...(planConfig || { weeklyTargetKm: 30, longRunTargetKm: 12, sessionsPerWeek: 3 }),
-      freeDays
-    };
-    
-    setPlanConfig(newConfig);
-    navigation.goBack();
-  }
-
-  function saveWellnessHours() {
+    // Validate wellness window
     const s = parseInt(winStart);
     const e = parseInt(winEnd);
     if (isNaN(s) || s < 0 || s > 23 || isNaN(e) || e < 1 || e > 24 || s >= e) {
-      Alert.alert('Invalid Hours', 'Start must be before end, both in 0–23 range.');
+      Alert.alert('Invalid Calibration Window', 'Start must be before end (0–23)');
       return;
     }
+
+    // Validate training days
+    if (freeDays.length === 0) {
+      Alert.alert('Select Training Days', 'Pick at least one day');
+      return;
+    }
+
+    // Save
+    setAthleteProfile({
+      ...athleteProfile,
+      maxHR: maxHR ? parseInt(maxHR) : undefined,
+      restHR: restHR ? parseInt(restHR) : undefined,
+    });
     setWellnessCalibrationHours({ start: s, end: e });
-    Alert.alert('Saved', `Wellness window: ${s}:00 – ${e}:00`);
+    setPlanConfig({
+      ...(planConfig || { weeklyTargetKm: 30, longRunTargetKm: 12, sessionsPerWeek: 3 }),
+      freeDays,
+    });
+
+    navigation.goBack();
   }
 
   function resetDevice() {
     Alert.alert(
       'Reset Device',
-      'This will create a new device ID and disconnect Strava. Your old data will stay on the server. Continue?',
+      'This will create a new device ID and disconnect Strava. Your existing data stays on the server.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: async () => {
-          try {
-            await api.Storage.delete('deviceId');
-            await api.Storage.delete('deviceSecret');
-            useDeviceStore.getState().clearCredentials();
-            useDeviceStore.getState().setAthleteProfile(null);
-            const newId = `device-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
-            const newSec = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-            await api.Storage.set('deviceId', newId);
-            await api.Storage.set('deviceSecret', newSec);
-            await api.registerDevice(newId, newSec);
-            useDeviceStore.getState().setCredentials(newId, newSec);
-            Alert.alert('Done', 'New device registered: ' + newId);
-          } catch (e) {
-            Alert.alert('Error', 'Failed to reset device');
-          }
-        }}
+        {
+          text: 'Reset', style: 'destructive', onPress: async () => {
+            try {
+              await api.Storage.delete('deviceId');
+              await api.Storage.delete('deviceSecret');
+              useDeviceStore.getState().clearCredentials();
+              useDeviceStore.getState().setAthleteProfile(null);
+              const newId = `device-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+              const newSec = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+              await api.Storage.set('deviceId', newId);
+              await api.Storage.set('deviceSecret', newSec);
+              await api.registerDevice(newId, newSec);
+              useDeviceStore.getState().setCredentials(newId, newSec);
+              Alert.alert('Done', 'New device registered');
+            } catch {
+              Alert.alert('Error', 'Failed to reset device');
+            }
+          },
+        },
       ]
     );
   }
 
+  const stravaActive = !!athleteProfile;
+
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.back}>←</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="chevron-back" size={24} color={tokens.color.textSecondary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* Device ID section */}
-        <Text style={styles.sectionLabel}>DEVICE</Text>
+        {/* ── PROFILE ── */}
+        <Text style={styles.sectionLabel}>PROFILE</Text>
+        <View style={styles.group}>
+          <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Target')} activeOpacity={0.7}>
+            <View style={[styles.rowIconWrap, { backgroundColor: tokens.color.primaryMuted }]}>
+              <Ionicons name="flag-outline" size={16} color={tokens.color.primary} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Race Goal</Text>
+              {target ? (
+                <Text style={styles.rowSub}>{target.distanceKm}K · {new Date(target.targetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</Text>
+              ) : (
+                <Text style={styles.rowSub}>Not set</Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={tokens.color.textTertiary} />
+          </TouchableOpacity>
 
-        <View style={styles.rowCard}>
-          <View style={styles.rowBody}>
-            <Text style={styles.rowTitle}>Device ID</Text>
-            <Text style={styles.rowSub} numberOfLines={1}>{deviceId}</Text>
-          </View>
-          <TouchableOpacity onPress={resetDevice}>
-            <Text style={{ color: '#ef4444', fontSize: tokens.font.sm, fontWeight: '600' }}>Reset</Text>
+          <View style={styles.divider} />
+
+          <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('StravaIntegration')} activeOpacity={0.7}>
+            <View style={[styles.rowIconWrap, { backgroundColor: '#FC4C0220' }]}>
+              <Text style={{ color: '#FC4C02', fontSize: 13, fontWeight: '800' }}>S</Text>
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Strava</Text>
+              <Text style={[styles.rowSub, { color: stravaActive ? tokens.color.success : tokens.color.textMuted }]}>
+                {stravaActive ? '● Connected' : '○ Not connected'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={tokens.color.textTertiary} />
           </TouchableOpacity>
         </View>
 
-        {/* Training Target section */}
-        <Text style={styles.sectionLabel}>TRAINING GOAL</Text>
+        {/* ── TRAINING ── */}
+        <Text style={styles.sectionLabel}>TRAINING</Text>
+        <View style={styles.group}>
 
-        <TouchableOpacity
-          style={styles.rowCard}
-          onPress={() => navigation.navigate('Target')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.rowIcon, { backgroundColor: tokens.color.primary }]}>
-            <Text style={styles.rowIconText}>🎯</Text>
+          {/* Training days */}
+          <View style={[styles.row, { alignItems: 'flex-start', paddingVertical: tokens.space.md }]}>
+            <View style={[styles.rowIconWrap, { backgroundColor: tokens.color.elevated, marginTop: 2 }]}>
+              <Ionicons name="calendar-outline" size={16} color={tokens.color.textSecondary} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Training Days</Text>
+              <View style={styles.daysRow}>
+                {DAYS.map(day => {
+                  const active = freeDays.includes(day.id);
+                  return (
+                    <TouchableOpacity
+                      key={day.id}
+                      style={[styles.dayBtn, active && styles.dayBtnActive]}
+                      onPress={() => toggleDay(day.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.dayBtnText, active && styles.dayBtnTextActive]}>
+                        {day.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.daysHint}>{freeDays.length} day{freeDays.length !== 1 ? 's' : ''} selected</Text>
+            </View>
           </View>
-          <View style={styles.rowBody}>
-            <Text style={styles.rowTitle}>Race Target</Text>
-            <Text style={styles.rowSub}>
-              {target ? `${target.distanceKm}K on ${new Date(target.targetDate).toLocaleDateString()}` : 'Set your race date and distance'}
-            </Text>
-          </View>
-          <Text style={styles.rowArrow}>›</Text>
-        </TouchableOpacity>
 
-        {/* Connections section */}
-        <Text style={styles.sectionLabel}>CONNECTIONS</Text>
+          <View style={styles.divider} />
 
-        <TouchableOpacity
-          style={styles.rowCard}
-          onPress={() => navigation.navigate('StravaIntegration')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.rowIcon, { backgroundColor: '#FC4C02' }]}>
-            <Text style={styles.rowIconText}>S</Text>
-          </View>
-          <View style={styles.rowBody}>
-            <Text style={styles.rowTitle}>Strava Integration</Text>
-            <Text style={[styles.rowSub, {
-              color: athleteProfile ? tokens.color.success : tokens.color.textMuted
-            }]}>
-              {athleteProfile ? '● Active' : '○ Not connected'}
-            </Text>
-          </View>
-          <Text style={styles.rowArrow}>›</Text>
-        </TouchableOpacity>
-
-        {/* Algorithm section */}
-        <Text style={styles.sectionLabel}>ALGORITHM</Text>
-
-        <TouchableOpacity
-          style={styles.rowCard}
-          onPress={() => navigation.navigate('TrainingEngine')}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.rowIcon, { backgroundColor: tokens.color.primary }]}>
-            <Text style={styles.rowIconText}>⚙</Text>
-          </View>
-          <View style={styles.rowBody}>
-            <Text style={styles.rowTitle}>The Training Engine</Text>
-            <Text style={styles.rowSub}>Tune VDOT, ACWR, and Foster Weights</Text>
-          </View>
-          <Text style={styles.rowArrow}>›</Text>
-        </TouchableOpacity>
-
-        <View style={styles.rowCard}>
-          <View style={[styles.rowIcon, { backgroundColor: tokens.color.warning }]}>
-            <Text style={styles.rowIconText}>🏋</Text>
-          </View>
-          <View style={styles.rowBody}>
-            <Text style={styles.rowTitle}>Hevy Load in Training Load</Text>
-            <Text style={styles.rowSub}>
-              {includeHevyInLoad
-                ? 'Strength sessions count toward 7d/28d load'
-                : 'Strength sessions excluded from load (Muscle Risk still active)'}
-            </Text>
-          </View>
-          <Switch
-            value={includeHevyInLoad}
-            onValueChange={toggleHevyInLoad}
-            trackColor={{ false: tokens.color.border, true: tokens.color.primaryMuted }}
-            thumbColor={includeHevyInLoad ? tokens.color.primary : tokens.color.textMuted}
-          />
-        </View>
-
-        {/* Heart Rate Settings */}
-        <Text style={styles.sectionLabel}>HEART RATE ZONES</Text>
-
-        <View style={styles.hrCard}>
-          <View style={styles.hrRow}>
-            <View style={styles.hrInputGroup}>
-              <Text style={styles.hrLabel}>Max HR</Text>
+          {/* Max HR */}
+          <View style={styles.row}>
+            <View style={[styles.rowIconWrap, { backgroundColor: tokens.color.dangerMuted }]}>
+              <Ionicons name="heart-outline" size={16} color={tokens.color.danger} />
+            </View>
+            <Text style={[styles.rowTitle, { flex: 1 }]}>Max HR</Text>
+            <View style={styles.inlineInputWrap}>
               <TextInput
-                style={styles.hrInput}
+                style={styles.inlineInput}
                 value={maxHR}
                 onChangeText={setMaxHR}
                 keyboardType="numeric"
                 placeholder="190"
                 placeholderTextColor={tokens.color.textTertiary}
+                maxLength={3}
               />
+              <Text style={styles.inlineUnit}>bpm</Text>
             </View>
-            <View style={styles.hrInputGroup}>
-              <Text style={styles.hrLabel}>Resting HR</Text>
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Resting HR */}
+          <View style={styles.row}>
+            <View style={[styles.rowIconWrap, { backgroundColor: tokens.color.elevated }]}>
+              <Ionicons name="heart-dislike-outline" size={16} color={tokens.color.textSecondary} />
+            </View>
+            <Text style={[styles.rowTitle, { flex: 1 }]}>Resting HR</Text>
+            <View style={styles.inlineInputWrap}>
               <TextInput
-                style={styles.hrInput}
+                style={styles.inlineInput}
                 value={restHR}
                 onChangeText={setRestHR}
                 keyboardType="numeric"
                 placeholder="60"
                 placeholderTextColor={tokens.color.textTertiary}
+                maxLength={3}
               />
+              <Text style={styles.inlineUnit}>bpm</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.hrSaveBtn} onPress={saveHR}>
-            <Text style={styles.hrSaveBtnText}>Save HR Settings</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* Wellness calibration hours */}
-        <Text style={styles.sectionLabel}>WELLNESS CALIBRATION HOURS</Text>
+        {/* ── ADVANCED ── */}
+        <Text style={styles.sectionLabel}>ADVANCED</Text>
+        <View style={styles.group}>
 
-        <View style={styles.hrCard}>
-          <Text style={[styles.hrLabel, { marginBottom: tokens.space.sm }]}>
-            Allow readiness calibration only within this daily time window.
-          </Text>
-          <View style={styles.hrRow}>
-            <View style={styles.hrInputGroup}>
-              <Text style={styles.hrLabel}>Start (hour)</Text>
+          <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('TrainingEngine')} activeOpacity={0.7}>
+            <View style={[styles.rowIconWrap, { backgroundColor: tokens.color.elevated }]}>
+              <Ionicons name="cog-outline" size={16} color={tokens.color.textSecondary} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Training Engine</Text>
+              <Text style={styles.rowSub}>VDOT, ACWR, Foster weights</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={tokens.color.textTertiary} />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <View style={styles.row}>
+            <View style={[styles.rowIconWrap, { backgroundColor: tokens.color.warningMuted }]}>
+              <Ionicons name="barbell-outline" size={16} color={tokens.color.warning} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Hevy in Training Load</Text>
+              <Text style={styles.rowSub}>{includeHevyInLoad ? 'Counts toward 7d / 28d load' : 'Excluded from load'}</Text>
+            </View>
+            <Switch
+              value={includeHevyInLoad}
+              onValueChange={toggleHevyInLoad}
+              trackColor={{ false: tokens.color.border, true: tokens.color.primaryMuted }}
+              thumbColor={includeHevyInLoad ? tokens.color.primary : tokens.color.textMuted}
+            />
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* Wellness calibration window */}
+          <View style={styles.row}>
+            <View style={[styles.rowIconWrap, { backgroundColor: tokens.color.elevated }]}>
+              <Ionicons name="time-outline" size={16} color={tokens.color.textSecondary} />
+            </View>
+            <Text style={[styles.rowTitle, { flex: 1 }]}>Calibration window</Text>
+            <View style={styles.timeInputWrap}>
               <TextInput
-                style={styles.hrInput}
+                style={styles.timeInput}
                 value={winStart}
                 onChangeText={setWinStart}
                 keyboardType="numeric"
                 placeholder="6"
                 placeholderTextColor={tokens.color.textTertiary}
+                maxLength={2}
               />
-            </View>
-            <View style={styles.hrInputGroup}>
-              <Text style={styles.hrLabel}>End (hour)</Text>
+              <Text style={styles.timeSep}>–</Text>
               <TextInput
-                style={styles.hrInput}
+                style={styles.timeInput}
                 value={winEnd}
                 onChangeText={setWinEnd}
                 keyboardType="numeric"
                 placeholder="11"
                 placeholderTextColor={tokens.color.textTertiary}
+                maxLength={2}
               />
+              <Text style={styles.inlineUnit}>h</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.hrSaveBtn} onPress={saveWellnessHours}>
-            <Text style={styles.hrSaveBtnText}>Save Window</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* Plan settings */}
-        <Text style={styles.sectionLabel}>TRAINING SCHEDULE</Text>
-
-        <View style={styles.planCard}>
-          <Text style={styles.planDesc}>
-            Select which days you can train. The planner will assign sessions to these days.
-          </Text>
-
-          <View style={styles.daysRow}>
-            {DAYS.map(day => {
-              const active = freeDays.includes(day.id);
-              return (
-                <TouchableOpacity
-                  key={day.id}
-                  style={[styles.dayBtn, active && styles.dayBtnActive]}
-                  onPress={() => toggleDay(day.id)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.dayBtnText, active && styles.dayBtnTextActive]}>
-                    {day.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+        {/* ── DEVICE ── */}
+        <Text style={styles.sectionLabel}>DEVICE</Text>
+        <View style={styles.group}>
+          <View style={styles.row}>
+            <View style={[styles.rowIconWrap, { backgroundColor: tokens.color.elevated }]}>
+              <Ionicons name="phone-portrait-outline" size={16} color={tokens.color.textSecondary} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowTitle}>Device ID</Text>
+              <Text style={styles.rowSub} numberOfLines={1}>{deviceId}</Text>
+            </View>
+            <TouchableOpacity onPress={resetDevice} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.dangerLink}>Reset</Text>
+            </TouchableOpacity>
           </View>
-
-          {freeDays.length > 0 && (
-            <Text style={styles.daysHint}>
-              {freeDays.length} day{freeDays.length !== 1 ? 's' : ''} selected
-            </Text>
-          )}
         </View>
 
         <View style={{ height: 120 }} />
@@ -365,11 +373,11 @@ export default function SettingsScreen() {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.continueBtn, freeDays.length === 0 && styles.continueBtnDim]}
-          onPress={savePlanSettings}
+          style={[styles.saveBtn, freeDays.length === 0 && { opacity: 0.4 }]}
+          onPress={saveAll}
           activeOpacity={0.85}
         >
-          <Text style={styles.continueBtnText}>Save & Close</Text>
+          <Text style={styles.saveBtnText}>Save</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -377,17 +385,15 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: tokens.color.bg,
-  },
+  container: { flex: 1, backgroundColor: tokens.color.bg },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: tokens.space.md,
     paddingTop: 60,
-    paddingBottom: tokens.space.md,
+    paddingBottom: tokens.space.sm,
   },
   backBtn: {
     width: 36,
@@ -395,19 +401,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  back: {
-    fontSize: 22,
-    color: tokens.color.textSecondary,
-  },
   headerTitle: {
     fontSize: tokens.font.lg,
     fontWeight: '700',
     color: tokens.color.textPrimary,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: tokens.space.md,
-  },
+
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: tokens.space.md },
 
   sectionLabel: {
     fontSize: 10,
@@ -419,77 +420,113 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
-  rowCard: {
+  /* Grouped card */
+  group: {
     backgroundColor: tokens.color.surface,
     borderRadius: tokens.radius.md,
     borderWidth: 1,
     borderColor: tokens.color.border,
+    overflow: 'hidden',
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tokens.color.border,
+    marginLeft: 52,
+  },
+
+  /* Row */
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: tokens.space.md,
-    gap: tokens.space.md,
-    marginBottom: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 13,
+    gap: tokens.space.sm,
   },
-  rowIcon: {
-    width: 38,
-    height: 38,
+  rowIconWrap: {
+    width: 32,
+    height: 32,
     borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  rowIconText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  rowBody: {
-    flex: 1,
-  },
+  rowBody: { flex: 1 },
   rowTitle: {
-    fontSize: tokens.font.md,
+    fontSize: tokens.font.sm,
     fontWeight: '600',
     color: tokens.color.textPrimary,
   },
   rowSub: {
     fontSize: tokens.font.xs,
     color: tokens.color.textMuted,
-    marginTop: 2,
-  },
-  rowArrow: {
-    fontSize: 22,
-    color: tokens.color.textTertiary,
-    fontWeight: '300',
+    marginTop: 1,
   },
 
-  planCard: {
-    backgroundColor: tokens.color.surface,
-    borderRadius: tokens.radius.md,
+  /* Inline number input (HR) */
+  inlineInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  inlineInput: {
+    backgroundColor: tokens.color.elevated,
+    borderRadius: tokens.radius.xs,
     borderWidth: 1,
     borderColor: tokens.color.border,
-    padding: tokens.space.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: tokens.font.md,
+    fontWeight: '700',
+    color: tokens.color.textPrimary,
+    textAlign: 'center',
+    minWidth: 52,
   },
-  planDesc: {
+  inlineUnit: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    fontWeight: '500',
+  },
+
+  /* Time window inputs */
+  timeInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  timeInput: {
+    backgroundColor: tokens.color.elevated,
+    borderRadius: tokens.radius.xs,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
     fontSize: tokens.font.sm,
-    color: tokens.color.textSecondary,
-    lineHeight: 20,
-    marginBottom: tokens.space.md,
+    fontWeight: '700',
+    color: tokens.color.textPrimary,
+    textAlign: 'center',
+    width: 40,
   },
+  timeSep: {
+    fontSize: tokens.font.sm,
+    color: tokens.color.textTertiary,
+    fontWeight: '600',
+  },
+
+  /* Training days */
   daysRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 6,
+    gap: 5,
+    marginTop: tokens.space.sm,
   },
   dayBtn: {
-    flex: 1,
-    aspectRatio: 1,
+    width: 34,
+    height: 34,
     borderRadius: tokens.radius.full,
     backgroundColor: tokens.color.elevated,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
-    borderColor: tokens.color.border,
-    maxWidth: 44,
+    borderColor: 'transparent',
   },
   dayBtnActive: {
     backgroundColor: tokens.color.primaryMuted,
@@ -505,73 +542,33 @@ const styles = StyleSheet.create({
   },
   daysHint: {
     fontSize: tokens.font.xs,
-    color: tokens.color.primary,
-    marginTop: tokens.space.sm,
-    fontWeight: '600',
+    color: tokens.color.textTertiary,
+    marginTop: 6,
+    fontWeight: '500',
   },
 
-  hrCard: {
-    backgroundColor: tokens.color.surface,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.color.border,
-    padding: tokens.space.lg,
-  },
-  hrRow: {
-    flexDirection: 'row',
-    gap: tokens.space.md,
-    marginBottom: tokens.space.lg,
-  },
-  hrInputGroup: {
-    flex: 1,
-  },
-  hrLabel: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textSecondary,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  hrInput: {
-    backgroundColor: tokens.color.elevated,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1.5,
-    borderColor: tokens.color.border,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 14,
-    fontSize: tokens.font.xl,
-    color: tokens.color.textPrimary,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  hrSaveBtn: {
-    backgroundColor: tokens.color.primary,
-    borderRadius: tokens.radius.sm,
-    paddingVertical: tokens.space.md,
-    alignItems: 'center',
-  },
-  hrSaveBtnText: {
-    color: '#fff',
+  /* Danger */
+  dangerLink: {
     fontSize: tokens.font.sm,
-    fontWeight: '700',
+    fontWeight: '600',
+    color: tokens.color.danger,
   },
 
+  /* Footer */
   footer: {
     padding: tokens.space.md,
     paddingBottom: tokens.space.xl,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: tokens.color.border,
   },
-  continueBtn: {
+  saveBtn: {
     backgroundColor: tokens.color.primary,
     borderRadius: tokens.radius.md,
     paddingVertical: tokens.space.md,
     alignItems: 'center',
   },
-  continueBtnDim: {
-    opacity: 0.45,
-  },
-  continueBtnText: {
-    color: '#ffffff',
+  saveBtnText: {
+    color: '#fff',
     fontSize: tokens.font.md,
     fontWeight: '700',
   },
