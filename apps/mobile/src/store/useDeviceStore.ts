@@ -24,6 +24,22 @@ export interface PlanConfig {
   vdot?: number;
 }
 
+export interface WellnessScores {
+  sleep: number;
+  fatigue: number;
+  soreness: number;
+  stress: number;
+  motivation: number;
+  health: number;
+  mood: number;
+}
+
+export interface WellnessCalibration {
+  scores: WellnessScores;
+  readinessScore: number;
+  calibratedAt: string;
+}
+
 interface DeviceState {
   deviceId: string | null;
   deviceSecret: string | null;
@@ -32,12 +48,16 @@ interface DeviceState {
   athleteProfile: AthleteProfile | null;
   planConfig: PlanConfig | null;
   target: TrainingTarget | null;
+  wellness: WellnessCalibration | null;
+  wellnessCalibrationHours: { start: number; end: number };
   setCredentials: (deviceId: string, deviceSecret: string) => void;
   clearCredentials: () => void;
   setLoading: (loading: boolean) => void;
   setAthleteProfile: (profile: AthleteProfile | null) => void;
   setPlanConfig: (config: PlanConfig | null) => void;
   setTarget: (target: TrainingTarget | null) => void;
+  setWellness: (wellness: WellnessCalibration | null) => void;
+  setWellnessCalibrationHours: (hours: { start: number; end: number }) => void;
   _hasHydrated: boolean;
   setHasHydrated: (state: boolean) => void;
 }
@@ -65,6 +85,8 @@ export const useDeviceStore = create<DeviceState>()(
       athleteProfile: null,
       planConfig: null,
       target: null,
+      wellness: null,
+      wellnessCalibrationHours: { start: 6, end: 11 },
       _hasHydrated: false,
       setCredentials: (deviceId, deviceSecret) =>
         set({ deviceId, deviceSecret, isRegistered: true, isLoading: false }),
@@ -74,6 +96,8 @@ export const useDeviceStore = create<DeviceState>()(
       setAthleteProfile: (athleteProfile) => set({ athleteProfile }),
       setPlanConfig: (planConfig) => set({ planConfig }),
       setTarget: (target) => set({ target }),
+      setWellness: (wellness) => set({ wellness }),
+      setWellnessCalibrationHours: (wellnessCalibrationHours) => set({ wellnessCalibrationHours }),
       _hasHydrated: state => set({ _hasHydrated: state }),
       updatePlanConfig: (updates: Partial<PlanConfig>) => set(state => ({
         planConfig: state.planConfig ? { ...state.planConfig, ...updates } : updates as PlanConfig

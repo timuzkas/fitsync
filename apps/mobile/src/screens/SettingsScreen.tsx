@@ -30,9 +30,11 @@ const DAYS = [
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const { deviceId, deviceSecret, athleteProfile, setAthleteProfile, planConfig, setPlanConfig, target } = useDeviceStore();
+  const { deviceId, deviceSecret, athleteProfile, setAthleteProfile, planConfig, setPlanConfig, target, wellnessCalibrationHours, setWellnessCalibrationHours } = useDeviceStore();
 
   const [freeDays, setFreeDays] = useState<string[]>(planConfig?.freeDays || ['mon', 'wed', 'fri']);
+  const [winStart, setWinStart] = useState(String(wellnessCalibrationHours?.start ?? 6));
+  const [winEnd, setWinEnd] = useState(String(wellnessCalibrationHours?.end ?? 11));
   const [maxHR, setMaxHR] = useState(athleteProfile?.maxHR?.toString() || '');
   const [restHR, setRestHR] = useState(athleteProfile?.restHR?.toString() || '');
   const [loadConfig, setLoadConfig] = useState<any>(null);
@@ -111,6 +113,17 @@ export default function SettingsScreen() {
     
     setPlanConfig(newConfig);
     navigation.goBack();
+  }
+
+  function saveWellnessHours() {
+    const s = parseInt(winStart);
+    const e = parseInt(winEnd);
+    if (isNaN(s) || s < 0 || s > 23 || isNaN(e) || e < 1 || e > 24 || s >= e) {
+      Alert.alert('Invalid Hours', 'Start must be before end, both in 0–23 range.');
+      return;
+    }
+    setWellnessCalibrationHours({ start: s, end: e });
+    Alert.alert('Saved', `Wellness window: ${s}:00 – ${e}:00`);
   }
 
   function resetDevice() {
@@ -275,6 +288,42 @@ export default function SettingsScreen() {
           </View>
           <TouchableOpacity style={styles.hrSaveBtn} onPress={saveHR}>
             <Text style={styles.hrSaveBtnText}>Save HR Settings</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Wellness calibration hours */}
+        <Text style={styles.sectionLabel}>WELLNESS CALIBRATION HOURS</Text>
+
+        <View style={styles.hrCard}>
+          <Text style={[styles.hrLabel, { marginBottom: tokens.space.sm }]}>
+            Allow readiness calibration only within this daily time window.
+          </Text>
+          <View style={styles.hrRow}>
+            <View style={styles.hrInputGroup}>
+              <Text style={styles.hrLabel}>Start (hour)</Text>
+              <TextInput
+                style={styles.hrInput}
+                value={winStart}
+                onChangeText={setWinStart}
+                keyboardType="numeric"
+                placeholder="6"
+                placeholderTextColor={tokens.color.textTertiary}
+              />
+            </View>
+            <View style={styles.hrInputGroup}>
+              <Text style={styles.hrLabel}>End (hour)</Text>
+              <TextInput
+                style={styles.hrInput}
+                value={winEnd}
+                onChangeText={setWinEnd}
+                keyboardType="numeric"
+                placeholder="11"
+                placeholderTextColor={tokens.color.textTertiary}
+              />
+            </View>
+          </View>
+          <TouchableOpacity style={styles.hrSaveBtn} onPress={saveWellnessHours}>
+            <Text style={styles.hrSaveBtnText}>Save Window</Text>
           </TouchableOpacity>
         </View>
 

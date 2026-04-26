@@ -23,11 +23,12 @@ import PlanScreen from './src/screens/PlanScreen';
 import TargetScreen from './src/screens/TargetScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import ProfileEditScreen from './src/screens/ProfileEditScreen';
+import WellnessCalibrationScreen from './src/screens/WellnessCalibrationScreen';
 
 const Stack = createNativeStackNavigator();
 
 function HomeScreen({ navigation }: any) {
-  const { deviceId, deviceSecret, isLoading: regLoading, target, _hasHydrated, planConfig, updatePlanConfig } = useDeviceStore();
+  const { deviceId, deviceSecret, isLoading: regLoading, target, _hasHydrated, planConfig, updatePlanConfig, wellness, wellnessCalibrationHours } = useDeviceStore();
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [plannedWorkouts, setPlannedWorkouts] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -169,6 +170,16 @@ function HomeScreen({ navigation }: any) {
     ?.reverse()
     ?.map((w: any) => (w.rpe && w.durationSec) ? Math.round(w.rpe * (w.durationSec / 60)) : 0) || [];
 
+  const isWellnessToday = wellness?.calibratedAt
+    ? new Date(wellness.calibratedAt).toDateString() === new Date().toDateString()
+    : false;
+  const effectiveReadiness = isWellnessToday ? wellness!.readinessScore : (loadData?.readiness || 0);
+
+  const now = new Date();
+  const currentHour = now.getHours();
+  const { start: winStart = 6, end: winEnd = 11 } = wellnessCalibrationHours || {};
+  const inCalibrationWindow = currentHour >= winStart && currentHour < winEnd;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -212,7 +223,7 @@ function HomeScreen({ navigation }: any) {
       >
         {loadData && (
           <LoadDashboard
-            readiness={loadData.readiness || 0}
+            readiness={effectiveReadiness}
             load7d={loadData.load7d ? Object.values(loadData.load7d).reduce((a: number, b: any) => a + b, 0) : 0}
             load28d={loadData.load28d ? Object.values(loadData.load28d).reduce((a: number, b: any) => a + b, 0) : 0}
             acwr={loadData.acwr}
@@ -221,6 +232,35 @@ function HomeScreen({ navigation }: any) {
             totalBodyFatigue={loadData.totalBodyFatigue}
           />
         )}
+
+        <TouchableOpacity
+          style={[styles.calibrateBtn, !inCalibrationWindow && styles.calibrateBtnDisabled]}
+          onPress={() => {
+            if (inCalibrationWindow) {
+              navigation.navigate('WellnessCalibration');
+            } else {
+              Alert.alert(
+                'Calibration Unavailable',
+                `Wellness calibration is available between ${winStart}:00 and ${winEnd}:00. Check Settings to adjust the window.`
+              );
+            }
+          }}
+          activeOpacity={inCalibrationWindow ? 0.7 : 1}
+        >
+          <View style={styles.calibrateBtnInner}>
+            <Text style={[styles.calibrateBtnText, !inCalibrationWindow && styles.calibrateBtnTextDim]}>
+              {isWellnessToday ? 'Re-calibrate Wellness' : 'Calibrate Readiness'}
+            </Text>
+            {isWellnessToday && (
+              <View style={styles.calibrateBadge}>
+                <Text style={styles.calibrateBadgeText}>Wellness active</Text>
+              </View>
+            )}
+            {!inCalibrationWindow && (
+              <Text style={styles.calibrateWindowText}>{winStart}:00 – {winEnd}:00</Text>
+            )}
+          </View>
+        </TouchableOpacity>
 
         {_hasHydrated && target ? (
           <TouchableOpacity 
@@ -481,6 +521,47 @@ const styles = StyleSheet.create({
     color: tokens.color.textMuted,
     marginTop: 2,
   },
+  calibrateBtn: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    padding: tokens.space.sm,
+    marginBottom: tokens.space.md,
+    marginTop: -tokens.space.xs,
+  },
+  calibrateBtnDisabled: {
+    opacity: 0.5,
+  },
+  calibrateBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.space.xs,
+  },
+  calibrateBtnText: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.primary,
+    fontWeight: '600',
+  },
+  calibrateBtnTextDim: {
+    color: tokens.color.textMuted,
+  },
+  calibrateBadge: {
+    backgroundColor: tokens.color.primaryMuted,
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  calibrateBadgeText: {
+    fontSize: 9,
+    color: tokens.color.primary,
+    fontWeight: '700',
+  },
+  calibrateWindowText: {
+    fontSize: 9,
+    color: tokens.color.textTertiary,
+    marginLeft: 'auto',
+  },
 });
 
 export default function App() {
@@ -547,6 +628,7 @@ export default function App() {
           <Stack.Screen name="Target" component={TargetScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="ProfileEdit" component={ProfileEditScreen} />
+          <Stack.Screen name="WellnessCalibration" component={WellnessCalibrationScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
