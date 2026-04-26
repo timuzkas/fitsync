@@ -379,42 +379,39 @@ function HomeScreen({ navigation }: any) {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Upcoming</Text>
             </View>
-            {plannedWorkouts.slice(0, 2).map((w) => {
-              const d = new Date(w.startedAt);
-              return (
-                <TouchableOpacity
-                  key={w.id}
-                  style={styles.upcomingCard}
-                  onPress={() =>
-                    Alert.alert(
-                      w.title || 'Planned Workout',
-                      `${d.toLocaleDateString()}${w.distanceM ? ` • ${(w.distanceM / 1000).toFixed(1)}km` : ''}`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: w }) },
-                        { text: 'Delete', style: 'destructive', onPress: async () => {
-                          try { await api.deleteWorkout(deviceId, deviceSecret, w.id); fetchPlanned(); }
-                          catch { Alert.alert('Error', 'Failed to delete'); }
-                        }},
-                      ]
-                    )
-                  }
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.upcomingDateBadge}>
-                    <Text style={styles.upcomingDay}>{d.getDate()}</Text>
-                    <Text style={styles.upcomingMonth}>{d.toLocaleDateString('en-US', { month: 'short' })}</Text>
-                  </View>
-                  <View style={styles.upcomingBody}>
-                    <Text style={styles.upcomingTitle}>{w.title || 'Planned Workout'}</Text>
-                    {w.distanceM ? (
-                      <Text style={styles.upcomingMeta}>{(w.distanceM / 1000).toFixed(1)} km</Text>
-                    ) : null}
-                  </View>
-                  <Text style={styles.upcomingArrow}>›</Text>
-                </TouchableOpacity>
-              );
-            })}
+            <View style={styles.upcomingList}>
+              {plannedWorkouts.slice(0, 3).map((w, idx) => {
+                const d = new Date(w.startedAt);
+                const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                const isLast = idx === Math.min(plannedWorkouts.length, 3) - 1;
+                return (
+                  <TouchableOpacity
+                    key={w.id}
+                    style={[styles.upcomingRow, !isLast && styles.upcomingRowBorder]}
+                    onPress={() =>
+                      Alert.alert(
+                        w.title || 'Planned Workout',
+                        `${d.toLocaleDateString()}${w.distanceM ? ` • ${(w.distanceM / 1000).toFixed(1)}km` : ''}`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Edit', onPress: () => navigation.navigate('AddWorkout', { editWorkout: w }) },
+                          { text: 'Delete', style: 'destructive', onPress: async () => {
+                            try { await api.deleteWorkout(deviceId, deviceSecret, w.id); fetchPlanned(); }
+                            catch { Alert.alert('Error', 'Failed to delete'); }
+                          }},
+                        ]
+                      )
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.upcomingDate}>{dateStr}</Text>
+                    <Text style={styles.upcomingTitle} numberOfLines={1}>{w.title || ((w.type || 'workout').charAt(0).toUpperCase() + (w.type || 'workout').slice(1))}</Text>
+                    {w.distanceM ? <Text style={styles.upcomingDist}>{(w.distanceM / 1000).toFixed(1)} km</Text> : null}
+                    <Ionicons name="chevron-forward" size={14} color={tokens.color.textTertiary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </>
         )}
 
@@ -627,8 +624,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: tokens.space.sm,
-    marginTop: tokens.space.xs,
+    marginBottom: 6,
+    marginTop: tokens.space.sm,
   },
   sectionTitle: {
     fontSize: 10,
@@ -644,7 +641,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: tokens.color.textMuted,
     letterSpacing: 0.5,
-    marginBottom: tokens.space.xs,
+    marginBottom: 6,
     marginTop: tokens.space.sm,
   },
 
@@ -680,56 +677,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  /* Upcoming cards */
-  upcomingCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  /* Upcoming list */
+  upcomingList: {
     backgroundColor: tokens.color.surface,
     borderRadius: tokens.radius.md,
     borderWidth: 1,
     borderColor: tokens.color.border,
-    borderStyle: 'dashed',
-    padding: tokens.space.md,
     marginBottom: tokens.space.sm,
-    gap: tokens.space.md,
+    overflow: 'hidden',
   },
-  upcomingDateBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.color.elevated,
+  upcomingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 10,
+    gap: tokens.space.sm,
+  },
+  upcomingRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: tokens.color.border,
+  },
+  upcomingDate: {
+    fontSize: tokens.font.xs,
+    fontWeight: '700',
+    color: tokens.color.textMuted,
+    width: 52,
     flexShrink: 0,
   },
-  upcomingDay: {
-    fontSize: tokens.font.md,
-    fontWeight: '800',
-    color: tokens.color.textPrimary,
-    lineHeight: 18,
-  },
-  upcomingMonth: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: tokens.color.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  upcomingBody: { flex: 1 },
   upcomingTitle: {
+    flex: 1,
     fontSize: tokens.font.sm,
     fontWeight: '600',
     color: tokens.color.textSecondary,
   },
-  upcomingMeta: {
+  upcomingDist: {
     fontSize: tokens.font.xs,
     color: tokens.color.textMuted,
-    marginTop: 2,
-  },
-  upcomingArrow: {
-    fontSize: 20,
-    color: tokens.color.textTertiary,
-    fontWeight: '300',
+    fontWeight: '500',
   },
 
   /* FAB */
