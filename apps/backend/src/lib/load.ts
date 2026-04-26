@@ -8,7 +8,7 @@ export interface RawLoad {
 
 export interface LoadConfig {
   halfLifeHours: { cardio: number; legs: number; upper: number; core: number };
-  multipliers: { cardio: number; legs: number; upper: number; core: number };
+  multipliers: { cardio: number; legs: number; upper: number; core: number; systemic?: number };
   weeklyTarget: number;
   readinessFormula: 'simple' | 'exponential';
   includeHevyInLoad?: boolean;

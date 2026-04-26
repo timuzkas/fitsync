@@ -12,10 +12,9 @@ import {
   DEFAULT_CONFIG, 
   LoadConfig 
 } from '@/lib/load';
-import { 
-  calculateVdot, 
-  suggestRpeFromHrZone, 
-  calculateSessionLoad 
+import {
+  calculateVdot,
+  suggestRpeFromHrZone,
 } from '../../../../../../../../packages/shared/training';
 
 import { parseHevyLog } from '@/lib/parsers/hevy';
@@ -66,7 +65,10 @@ export async function POST(request: NextRequest) {
       where: { externalId: { in: externalIds } },
       select: { externalId: true, deviceInstallationId: true }
     });
-    const existingMap = new Map(existingWorkouts.map(w => [w.externalId, w]));
+    type ExistingEntry = { externalId: string; deviceInstallationId: string };
+    const existingMap = new Map<string, ExistingEntry>(
+      existingWorkouts.map((w: ExistingEntry) => [w.externalId, w])
+    );
 
     // 5. Parallelize processing of activities
     const currentVdot = installation.vdot || 40;
@@ -178,6 +180,10 @@ export async function POST(request: NextRequest) {
 
         console.log('[SYNC] About to upsert workout:', { externalId: useExternalId, workoutType, title: activity.name });
 
+        const gapPaceSec = activity.average_grade_adj_pace
+          ? Math.round(activity.average_grade_adj_pace * 1000)
+          : null;
+
         const workout = await prisma.workout.upsert({
           where: { externalId: useExternalId },
           update: {
@@ -190,6 +196,7 @@ export async function POST(request: NextRequest) {
             distanceM: activity.distance,
             rpe,
             vdotAtTime: currentVdot,
+            ...(gapPaceSec !== null && { gapPaceSec }),
             exercises: hevyResult?.exercises ? {
               deleteMany: {},
               create: hevyResult.exercises.map(ex => ({
@@ -213,6 +220,7 @@ export async function POST(request: NextRequest) {
             distanceM: activity.distance,
             rpe,
             vdotAtTime: currentVdot,
+            ...(gapPaceSec !== null && { gapPaceSec }),
             exercises: hevyResult?.exercises ? {
               create: hevyResult.exercises.map(ex => ({
                 name: ex.name,
