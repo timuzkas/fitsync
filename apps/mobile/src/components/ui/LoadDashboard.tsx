@@ -148,16 +148,20 @@ export function LoadDashboard({
             />
           </View>
 
-          {/* Calibrate */}
-          {onCalibrate && (
+          {/* Calculated timestamp */}
+          {calibratedTime && (
+            <Text style={styles.calibratedAt}>Calculated at {calibratedTime}</Text>
+          )}
+
+          {/* Calibrate action — only when in window */}
+          {onCalibrate && calibrateEnabled && (
             <TouchableOpacity
               onPress={onCalibrate}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.calibrateBtn}
             >
-              <Text style={[styles.calibrateText, { color: calibrateEnabled ? tokens.color.primary : tokens.color.textTertiary }]}>
-                {calibratedTime
-                  ? `Set ${calibratedTime} · Re-calibrate`
-                  : isWellnessActive ? 'Re-calibrate' : 'Calibrate wellness'}
+              <Text style={styles.calibrateBtnText}>
+                {isWellnessActive ? 'Re-calibrate' : 'Calibrate wellness'}
               </Text>
             </TouchableOpacity>
           )}
@@ -214,10 +218,26 @@ const styles = StyleSheet.create({
   metricsBlock: {
     gap: 0,
   },
-  calibrateText: {
+  calibratedAt: {
     fontSize: 9,
-    fontWeight: '600',
+    color: tokens.color.textTertiary,
     letterSpacing: 0.2,
-    marginTop: 2,
+    marginTop: 1,
+  },
+  calibrateBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: tokens.color.elevated,
+    borderRadius: tokens.radius.sm,
+    paddingHorizontal: tokens.space.sm,
+    paddingVertical: 4,
+    marginTop: 3,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  calibrateBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: tokens.color.primary,
+    letterSpacing: 0.1,
   },
 });

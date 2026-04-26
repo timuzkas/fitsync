@@ -34,6 +34,15 @@ if (Platform.OS === 'android') {
 
 const Stack = createNativeStackNavigator();
 
+const AppTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: tokens.color.bg,
+    card: tokens.color.surface,
+  },
+};
+
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 12) return 'Good morning';
@@ -317,36 +326,38 @@ function HomeScreen({ navigation }: any) {
                 const totalDays = target.createdAt
                   ? Math.max(1, Math.ceil((new Date(target.targetDate).getTime() - new Date(target.createdAt).getTime()) / 86400000))
                   : daysToRace;
-                const progress = Math.min(1, Math.max(0, 1 - daysToRace / totalDays));
+                const pct = Math.round(Math.min(100, Math.max(0, (1 - daysToRace / totalDays) * 100)));
                 const goalTimeSec = target.targetTimeSec;
                 const goalTimeStr = goalTimeSec
                   ? `${Math.floor(goalTimeSec / 3600)}h ${String(Math.floor((goalTimeSec % 3600) / 60)).padStart(2, '0')}m`
                   : null;
+                const typeLabel = target.type === 'run' ? 'Run' : target.type === 'ride' ? 'Ride' : 'Swim';
                 return (
                   <>
-                    <View style={styles.raceCardTop}>
-                      <Text style={styles.raceCardLabel}>GOAL RACE</Text>
-                      <View style={styles.raceCardTitleRow}>
-                        <Text style={styles.raceCardTitle}>
-                          {target.distanceKm}K {target.type === 'run' ? 'Run' : target.type === 'ride' ? 'Ride' : 'Swim'}
-                        </Text>
-                        <Text style={styles.raceCardDaysInline}>{daysToRace} days</Text>
-                      </View>
-                      <View style={styles.raceCardMeta}>
-                        <Text style={styles.raceCardDate}>
+                    {/* ── Header: info left, countdown right ── */}
+                    <View style={styles.raceCardHeader}>
+                      <View style={styles.raceCardHeaderLeft}>
+                        <Text style={styles.raceCardRaceName}>🏁 {target.distanceKm}K {typeLabel}</Text>
+                        <Text style={styles.raceCardRaceDate}>
                           {new Date(target.targetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {goalTimeStr ? `  ·  Goal ${goalTimeStr}` : ''}
                         </Text>
-                        {goalTimeStr && (
-                          <>
-                            <Text style={styles.raceCardMetaSep}>·</Text>
-                            <Text style={styles.raceCardGoalTime}>Goal {goalTimeStr}</Text>
-                          </>
-                        )}
                       </View>
-                      <View style={styles.raceProgressBg}>
-                        <View style={[styles.raceProgressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
+                      <View style={styles.raceCardCountdown}>
+                        <Text style={styles.raceCardCountdownNum}>{daysToRace}</Text>
+                        <Text style={styles.raceCardCountdownLabel}>DAYS</Text>
                       </View>
                     </View>
+
+                    {/* ── Progress bar ── */}
+                    <View style={styles.raceCardProgressRow}>
+                      <View style={styles.raceCardProgressBg}>
+                        <View style={[styles.raceCardProgressFill, { width: `${pct}%` as any }]} />
+                      </View>
+                      <Text style={styles.raceCardProgressPct}>{pct}%</Text>
+                    </View>
+
+                    {/* ── Next planned ── */}
                     {plannedWorkouts[0] && (
                       <View style={styles.raceCardNext}>
                         <Text style={styles.raceCardNextLabel}>NEXT PLANNED</Text>
@@ -565,63 +576,73 @@ const styles = StyleSheet.create({
     marginBottom: tokens.space.sm,
     overflow: 'hidden',
   },
-  raceCardTop: {
+  /* ── Race card: populated ── */
+  raceCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: tokens.space.md,
     paddingBottom: tokens.space.sm,
+    gap: tokens.space.md,
   },
-  raceCardLabel: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: tokens.color.textTertiary,
-    letterSpacing: 1.5,
-    marginBottom: 3,
+  raceCardHeaderLeft: {
+    flex: 1,
+    gap: 4,
   },
-  raceCardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-  },
-  raceCardTitle: {
+  raceCardRaceName: {
     fontSize: tokens.font.lg,
     fontWeight: '800',
     color: tokens.color.textPrimary,
     letterSpacing: -0.3,
   },
-  raceCardDaysInline: {
-    fontSize: tokens.font.sm,
-    fontWeight: '700',
-    color: tokens.color.primary,
+  raceCardRaceDate: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    fontWeight: '500',
   },
-  raceCardMeta: {
+  raceCardCountdown: {
+    alignItems: 'center',
+    minWidth: 52,
+  },
+  raceCardCountdownNum: {
+    fontSize: 42,
+    fontWeight: '800',
+    color: tokens.color.primary,
+    letterSpacing: -2,
+    lineHeight: 46,
+  },
+  raceCardCountdownLabel: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: tokens.color.primary,
+    letterSpacing: 2,
+    opacity: 0.6,
+    marginTop: -2,
+  },
+  raceCardProgressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginTop: 2,
-    marginBottom: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    paddingBottom: tokens.space.sm,
+    gap: tokens.space.sm,
   },
-  raceCardDate: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
-  },
-  raceCardMetaSep: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textTertiary,
-  },
-  raceCardGoalTime: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textMuted,
-    fontWeight: '600',
-  },
-  raceProgressBg: {
+  raceCardProgressBg: {
+    flex: 1,
     height: 3,
     backgroundColor: tokens.color.border,
     borderRadius: 2,
     overflow: 'hidden',
   },
-  raceProgressFill: {
+  raceCardProgressFill: {
     height: '100%',
     backgroundColor: tokens.color.primary,
     borderRadius: 2,
+  },
+  raceCardProgressPct: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: tokens.color.textTertiary,
+    width: 26,
+    textAlign: 'right',
   },
   raceCardNext: {
     borderTopWidth: 1,
@@ -852,7 +873,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <NavigationContainer theme={DarkTheme}>
+      <NavigationContainer theme={AppTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: tokens.color.bg } }}>
           <Stack.Screen name="Home" component={HomeScreen} />
           <Stack.Screen name="AddWorkout" component={AddWorkoutScreen} />
