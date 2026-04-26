@@ -140,6 +140,46 @@ export function calculateItraIndex(equivalentKm: number, timeSec: number): numbe
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TRAIL RACE HANDLING (TYPE D)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface TrailRaceResult {
+  equivalentKm: number;
+  updatedVdot: number;
+  itraIndex: number;
+}
+
+/** Koop formula: EFD = distance_km + D+_m/100 + D-_m/150 */
+export function calculateKoopEquivalentKm(distanceKm: number, dPlusM: number, dMinusM = 0): number {
+  return distanceKm + dPlusM / 100 + dMinusM / 150;
+}
+
+export function processTrailRaceResult(
+  distanceKm: number,
+  dPlusM: number,
+  timeSec: number,
+  currentVdot: number
+): TrailRaceResult {
+  const equivalentKm = calculateKoopEquivalentKm(distanceKm, dPlusM);
+  const rawVdot = calculateVdot(equivalentKm * 1000, timeSec / 60);
+  const updatedVdot = getEffectiveVdot(currentVdot, rawVdot);
+  const itraIndex = calculateItraIndex(equivalentKm, timeSec);
+  return { equivalentKm, updatedVdot, itraIndex };
+}
+
+/** D+ progression: max +10%/week; recovery weeks reduce by ~25%. */
+export function calculateNextWeeklyDPlus(previousWeeklyDPlus: number, isRecoveryWeek: boolean): number {
+  if (previousWeeklyDPlus <= 0) return 0;
+  return Math.round((isRecoveryWeek ? previousWeeklyDPlus * 0.75 : previousWeeklyDPlus * 1.10) * 10) / 10;
+}
+
+/** Scale weekly Daniels points target proportionally after a VDOT update from a trail race. */
+export function recalibrateWeeklyPoints(currentTarget: number, oldVdot: number, newVdot: number): number {
+  if (oldVdot <= 0 || newVdot <= oldVdot) return currentTarget;
+  return Math.round(currentTarget * (newVdot / oldVdot));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GOAL CLASSIFICATION & VDOT RAMP LIMITER
 // ─────────────────────────────────────────────────────────────────────────────
 

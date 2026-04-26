@@ -1,5 +1,5 @@
 
-import { getZonePace, VDOT_COEFFS, calculateDanielsPoints, calculateEquivalentKm } from './training';
+import { getZonePace, VDOT_COEFFS, calculateDanielsPoints, calculateEquivalentKm, calculateNextWeeklyDPlus } from './training';
 import { Athlete, PointsHistoryEntry, AdaptiveState } from './index';
 
 export type RaceType = 'A' | 'B' | 'C' | 'D';
@@ -8,7 +8,9 @@ export interface Race {
   name: string;
   date: Date;
   type: RaceType;
+  distanceKm?: number;
   dPlusM?: number;
+  goalTimeSec?: number;
 }
 
 export type PhaseType = 'Base' | 'Economy' | 'Threshold' | 'Peak' | 'Recovery' | 'Taper';
@@ -154,11 +156,17 @@ export function planWeek(
   weeklyPointsTarget?: number,
   legMuscularRisk: number = 0,
   totalBodyFatigue: number = 0,
-  readinessScore: number = 100
+  readinessScore: number = 100,
+  weeklyTargetDPlus?: number
 ): DayPlan[] {
   let adjustedTarget = weeklyTargetKm;
   if (phase.type === 'Taper') adjustedTarget *= 0.75;
   else if (phase.type === 'Recovery') adjustedTarget *= 0.50;
+
+  const isRecoveryWeek = phase.type === 'Recovery' || phase.type === 'Taper';
+  const adjustedDPlus = weeklyTargetDPlus
+    ? calculateNextWeeklyDPlus(weeklyTargetDPlus, isRecoveryWeek)
+    : undefined;
 
   const week: DayPlan[] = [];
   const days: Date[] = [];
@@ -251,6 +259,18 @@ export function planWeek(
   const finalWeek: DayPlan[] = plan.map((p, i) => p || {
     date: days[i], type: 'Rest', durationMin: 0, distanceKm: 0, rpe: 0, load: 0, danielsPoints: 0
   });
+
+  // Distribute weekly D+ proportionally across active sessions (Type D trail plans)
+  if (adjustedDPlus && adjustedDPlus > 0) {
+    const totalDist = finalWeek.reduce((acc, p) => acc + p.distanceKm, 0);
+    if (totalDist > 0) {
+      finalWeek.forEach(p => {
+        if (p.distanceKm > 0) {
+          p.dPlusM = Math.round(adjustedDPlus * (p.distanceKm / totalDist));
+        }
+      });
+    }
+  }
 
   // Section 9.5 Plan Limitation Flag
   const totalPoints = finalWeek.reduce((acc, p) => acc + p.danielsPoints, 0);
