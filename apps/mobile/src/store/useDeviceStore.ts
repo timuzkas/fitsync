@@ -4,16 +4,41 @@ import * as SecureStore from 'expo-secure-store';
 import { TrainingTarget } from '../types';
 
 export interface AthleteProfile {
+  // Basic physiology
   height?: number;
   weight?: number;
   sex?: 'M' | 'F';
   maxHR?: number;
   restHR?: number;
-  dob?: string;
+  dob?: string;       // ISO date — used for age → Factor 3 of Hudson profiling
   city?: string;
   country?: string;
   vdot?: number;
   easyPaceSecPerKm?: number;
+
+  // Hudson 10-factor profile (§3)
+  // Factor 1: Recent training
+  recentAvgWeeklyKm?: number;
+  longestRecentRunKm?: number;
+  runsPerWeek?: number;
+  weeksConsistent?: number;
+  // Factor 2: Experience
+  experienceYears?: number;
+  // Factor 4: Best race performances (feeds VDOT calculator)
+  bestRaces?: Array<{ distanceKm: number; timeSec: number; date: string }>;
+  // Factor 6: Injury history
+  injuryHistory?: Array<{ area: string; recurrent: boolean }>;
+  // Factor 7: Speed vs endurance bias
+  strengthBias?: 'speedBiased' | 'enduranceBiased' | 'balanced';
+  // Factor 8: Recovery tendency
+  recoveryProfile?: 'needsFullRest' | 'easyDayHelps' | 'fastAdapter';
+  // Factor 9: Long-term goal
+  longTermGoal?: { distanceKm: number; goalTimeSec: number; targetYear: number };
+  // Factor 10: Motivation pattern
+  motivationProfile?: 'tendsToOverdo' | 'tendsToUnderdo' | 'needsTuneUpRaces';
+
+  // Derived from factors 1–3 — computed by deriveRunnerLevel(), stored for plan use
+  runnerLevel?: 'beginner' | 'lowKey' | 'competitive' | 'highlyCompetitive' | 'elite';
 }
 
 export interface PlanConfig {

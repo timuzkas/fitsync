@@ -1,6 +1,6 @@
 
-import { getZonePace, VDOT_COEFFS, calculateDanielsPoints, calculateEquivalentKm, calculateNextWeeklyDPlus } from './training';
-import { Athlete, PointsHistoryEntry, AdaptiveState } from './index';
+import { getZonePace, VDOT_COEFFS, calculateDanielsPoints, calculateNextWeeklyDPlus } from './training';
+import { Athlete, AdaptiveState, RunnerLevel } from './index';
 
 export type RaceType = 'A' | 'B' | 'C' | 'D';
 
@@ -106,7 +106,7 @@ export function evaluateAdaptiveLevel(athlete: Athlete): {
 /**
  * Allocate phases backwards from A race date.
  */
-export function planSeason(aRaceDate: Date, startDate: Date, races: Race[] = []): TrainingCycle {
+export function planSeason(aRaceDate: Date, startDate: Date, _races: Race[] = []): TrainingCycle {
   const msPerWeek = 1000 * 60 * 60 * 24 * 7;
   const totalWeeks = Math.ceil((aRaceDate.getTime() - startDate.getTime()) / msPerWeek);
 
@@ -124,7 +124,6 @@ export function planSeason(aRaceDate: Date, startDate: Date, races: Race[] = [])
     const ph1 = Math.max(1, Math.floor(mainTrainingWeeks * 0.25));
     const ph2 = Math.max(2, Math.floor(mainTrainingWeeks * 0.25));
     const ph3 = Math.max(2, Math.floor(mainTrainingWeeks * 0.25));
-    const ph4 = mainTrainingWeeks - ph1 - ph2 - ph3;
     phases.push({ type: 'Base',      startWeek: 1,                  endWeek: ph1,              focusZone: 'E' });
     phases.push({ type: 'Economy',   startWeek: ph1 + 1,            endWeek: ph1 + ph2,         focusZone: 'R' });
     phases.push({ type: 'Threshold', startWeek: ph1 + ph2 + 1,      endWeek: ph1 + ph2 + ph3,   focusZone: 'T' });
@@ -168,7 +167,6 @@ export function planWeek(
     ? calculateNextWeeklyDPlus(weeklyTargetDPlus, isRecoveryWeek)
     : undefined;
 
-  const week: DayPlan[] = [];
   const days: Date[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(startDate);
@@ -424,4 +422,138 @@ function findQualityDay(available: number[], plan: (DayPlan | null)[], raceIdx: 
 function availableIndicesFromDays(availableDays: number[], startDate: Date): number[] {
   const startDay = startDate.getDay();
   return availableDays.map(day => (day - startDay + 7) % 7).sort((a, b) => a - b);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HUDSON ADAPTIVE RUNNING — PLANNING ENGINE
+// §4 Volume bands, §5 Period structure, §7 Plan levels
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type HudsonRaceDistance = '5K' | '10K' | 'HM' | 'marathon';
+export type HudsonPeriodType   = 'Introductory' | 'Fundamental' | 'Sharpening';
+
+export interface HudsonPhase {
+  type: HudsonPeriodType;
+  startWeek: number;
+  endWeek: number;
+}
+
+export interface HudsonSeason {
+  phases: HudsonPhase[];
+  totalWeeks: number;
+  introWeeks: number;
+  fundWeeks: number;
+  sharpWeeks: number;
+}
+
+/**
+ * Canonical period lengths by race distance (§5 table).
+ * Sharpening is always 4 weeks; never longer (hard rule §14).
+ */
+const HUDSON_CANONICAL_PERIODS: Record<HudsonRaceDistance, { intro: number; fund: number; total: number }> = {
+  '5K':      { intro: 3, fund: 6,  total: 12 },
+  '10K':     { intro: 4, fund: 6,  total: 14 },
+  'HM':      { intro: 6, fund: 6,  total: 16 },
+  'marathon':{ intro: 6, fund: 10, total: 20 },
+};
+
+/** Valid total-week range per distance (§5). */
+const HUDSON_PLAN_RANGE: Record<HudsonRaceDistance, { min: number; max: number }> = {
+  '5K':      { min: 12, max: 16 },
+  '10K':     { min: 14, max: 18 },
+  'HM':      { min: 16, max: 20 },
+  'marathon':{ min: 18, max: 24 },
+};
+
+/**
+ * Peak weekly km bands by runner level and race distance (§4 table, rounded).
+ * Use the midpoint of each band as the planning target.
+ */
+export const HUDSON_VOLUME_BANDS: Record<RunnerLevel, Record<HudsonRaceDistance, { min: number; max: number }>> = {
+  beginner: {
+    '5K': { min: 30, max: 50 }, '10K': { min: 40, max: 55 },
+    'HM': { min: 55, max: 65 }, 'marathon': { min: 65, max: 80 },
+  },
+  lowKey: {
+    '5K': { min: 40, max: 55 }, '10K': { min: 50, max: 65 },
+    'HM': { min: 55, max: 70 }, 'marathon': { min: 80, max: 95 },
+  },
+  competitive: {
+    '5K': { min: 65, max: 80 }, '10K': { min: 70, max: 90 },
+    'HM': { min: 80, max: 95 }, 'marathon': { min: 95, max: 115 },
+  },
+  highlyCompetitive: {
+    '5K': { min: 80, max: 95 }, '10K': { min: 95, max: 115 },
+    'HM': { min: 110, max: 130 }, 'marathon': { min: 130, max: 145 },
+  },
+  elite: {
+    '5K': { min: 145, max: 175 }, '10K': { min: 150, max: 185 },
+    'HM': { min: 160, max: 195 }, 'marathon': { min: 175, max: 210 },
+  },
+};
+
+/**
+ * Returns the midpoint of the appropriate volume band as the week's km target.
+ * Clamped to never exceed +50% of the runner's current weekly km (hard rule §14).
+ */
+export function getHudsonPeakWeeklyKm(
+  level: RunnerLevel,
+  distance: HudsonRaceDistance,
+  currentWeeklyKm: number,
+): number {
+  const band = HUDSON_VOLUME_BANDS[level][distance];
+  const target = Math.round((band.min + band.max) / 2);
+  const hardCap = Math.round(currentWeeklyKm * 1.5);
+  return Math.min(target, hardCap);
+}
+
+/**
+ * Allocate Hudson's three training periods from start date to race date (§5).
+ * Sharpening is always exactly 4 weeks.
+ * Introductory period is capped at 6 weeks (hard rule §14).
+ */
+export function hudsonPlanSeason(
+  raceDate: Date,
+  startDate: Date,
+  distance: HudsonRaceDistance,
+): HudsonSeason {
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const availableWeeks = Math.round((raceDate.getTime() - startDate.getTime()) / msPerWeek);
+
+  const range = HUDSON_PLAN_RANGE[distance];
+  const totalWeeks = Math.max(range.min, Math.min(range.max, availableWeeks));
+
+  const sharpWeeks = 4; // always — §5 universal rule
+  const buildWeeks = totalWeeks - sharpWeeks;
+
+  const canonical = HUDSON_CANONICAL_PERIODS[distance];
+  const introRatio = canonical.intro / (canonical.intro + canonical.fund);
+  // Intro is capped at 6 weeks (§14 rule 3)
+  const introWeeks = Math.max(1, Math.min(6, Math.round(buildWeeks * introRatio)));
+  const fundWeeks  = buildWeeks - introWeeks;
+
+  const phases: HudsonPhase[] = [
+    { type: 'Introductory', startWeek: 1,                        endWeek: introWeeks },
+    { type: 'Fundamental',  startWeek: introWeeks + 1,            endWeek: introWeeks + fundWeeks },
+    { type: 'Sharpening',   startWeek: introWeeks + fundWeeks + 1, endWeek: totalWeeks },
+  ];
+
+  return { phases, totalWeeks, introWeeks, fundWeeks, sharpWeeks };
+}
+
+/**
+ * Resolve which Hudson phase a given week number falls into.
+ * Returns undefined if the week is out of bounds.
+ */
+export function getHudsonPhaseForWeek(season: HudsonSeason, weekNumber: number): HudsonPhase | undefined {
+  return season.phases.find(p => weekNumber >= p.startWeek && weekNumber <= p.endWeek);
+}
+
+/**
+ * Whether a week is a recovery week.
+ * Hudson inserts a recovery week every 3–4 weeks (§5, §14 rule 8).
+ * Week 1 is never a recovery week.
+ */
+export function isHudsonRecoveryWeek(weekNumber: number): boolean {
+  return weekNumber > 1 && weekNumber % 4 === 0;
 }

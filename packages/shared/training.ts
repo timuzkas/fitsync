@@ -180,6 +180,57 @@ export function recalibrateWeeklyPoints(currentTarget: number, oldVdot: number, 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// HUDSON PACE TOKENS
+// Maps Hudson workout vocabulary to sec/km via the VDOT seam.
+// HM = 60% of the way from M toward T (faster than marathon, slower than 10K threshold)
+// threeK = midpoint between I and R (between 5K and 1500m race pace)
+// hillMax = maximal effort — no pace, time-based only
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type HudsonPaceToken = 'easy' | 'M' | 'HM' | 'tenK' | 'fiveK' | 'threeK' | 'R' | 'hillMax';
+
+export interface HudsonPaceTable {
+  easy: number;
+  M: number;
+  HM: number;
+  tenK: number;
+  fiveK: number;
+  threeK: number;
+  R: number;
+  hillMax: null;
+}
+
+/**
+ * Derive the concrete pace (sec/km) for every Hudson workout token from a runner's VDOT.
+ * This is the single seam between Hudson's plan structure and Daniels' calculator.
+ * hillMax is null — it is a maximal sprint effort, not a pace target.
+ */
+export function getHudsonPaceTable(vdot: number): HudsonPaceTable {
+  const M = getZonePace(vdot, 'M');
+  const T = getZonePace(vdot, 'T');
+  const I = getZonePace(vdot, 'I');
+  const R = getZonePace(vdot, 'R');
+  return {
+    easy:    getZonePace(vdot, 'E'),
+    M,
+    HM:      Math.round(M - 0.6 * (M - T)),  // 60% of way from marathon toward threshold
+    tenK:    T,
+    fiveK:   I,
+    threeK:  Math.round(I - 0.5 * (I - R)),  // midpoint between I and R
+    R,
+    hillMax: null,
+  };
+}
+
+/**
+ * Apply a sec/km offset to a pace.
+ * Positive offset = slower (e.g. "+12 sec/km" for marathon-pace + 12).
+ */
+export function applyPaceOffset(paceSecPerKm: number, offsetSecPerKm: number): number {
+  return Math.round(paceSecPerKm + offsetSecPerKm);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GOAL CLASSIFICATION & VDOT RAMP LIMITER
 // ─────────────────────────────────────────────────────────────────────────────
 
