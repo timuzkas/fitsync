@@ -1,8 +1,16 @@
 /**
  * ORCHESTRO ELITE PLANNER ENGINE
  * Logic: Stress-Balance Model (TRIMP / CTL / ATL)
- * Follows: The Constitution of Good Design (Article V: Purpose Over Decoration)
+ * Volume targets and period structure driven by Hudson Adaptive Running (§4, §5).
  */
+import {
+  hudsonPlanSeason,
+  getHudsonPhaseForWeek,
+  getHudsonPeakWeeklyKm,
+  isHudsonRecoveryWeek,
+  HudsonRaceDistance,
+} from '../../../../packages/shared/planner';
+import { RunnerLevel } from '../../../../packages/shared/index';
 
 export interface Activity {
   date: Date;
@@ -16,12 +24,14 @@ export interface Activity {
 export interface Athlete {
   maxHR: number;
   restHR: number;
-  weight: number;        // kg (used for grade-adjusted power estimation)
+  weight: number;
+  runnerLevel?: RunnerLevel;      // Hudson §4 — drives volume bands
 }
 
 export interface Milestone {
-  targetDistance: number;
+  targetDistance: number;         // km
   targetDate: Date;
+  raceDistance?: HudsonRaceDistance; // '5K' | '10K' | 'HM' | 'marathon'
 }
 
 export interface Session {
@@ -44,42 +54,48 @@ export interface PlanWeek {
 }
 
 export const generateElitePlan = (activities: Activity[], athlete: Athlete, milestone: Milestone): PlanWeek[] => {
-  // 1. CALCULATE PHYSIOLOGICAL MARKERS (The "Real" Baseline)
   const stats = analyzeHistory(activities, athlete);
-  
-  // 2. INITIALIZE STATE
+
   const plan: PlanWeek[] = [];
   const today = new Date();
   const msPerWeek = 1000 * 60 * 60 * 24 * 7;
   const weeksToGoal = Math.max(1, Math.floor((milestone.targetDate.getTime() - today.getTime()) / msPerWeek));
-  
-  // Starting point: Your current 6-week weighted average load
-  let currentCTL = stats.initialCTL; 
+
+  // Hudson §5: period structure when runnerLevel is available
+  const hudsonDist: HudsonRaceDistance = milestone.raceDistance ?? '10K';
+  const hudsonSeason = athlete.runnerLevel
+    ? hudsonPlanSeason(milestone.targetDate, today, hudsonDist)
+    : null;
+
+  let currentCTL = stats.initialCTL;
   let weeklyVolume = stats.avgWeeklyDistance;
 
-  // 3. THE 4-POINT GROWTH CYCLE (Article III: Structure)
   for (let w = 1; w <= weeksToGoal; w++) {
     const isTaper = w > weeksToGoal - 2;
-    const isRecovery = w % 4 === 0 && !isTaper; // Every 4th week is a reset
-    
-    // PROGRESSION LOGIC
-    // We target a "Load Increase" of 5-8 CTL points per build cycle
-    let loadMultiplier = 1.07; // 7% load growth
-    if (isRecovery) loadMultiplier = 0.70;
-    if (isTaper) loadMultiplier = 0.60;
+    const isRecovery = isHudsonRecoveryWeek(w) && !isTaper;
 
-    weeklyVolume *= loadMultiplier;
-    currentCTL *= loadMultiplier;
+    // Hudson §4: use volume band as the volume ceiling when runnerLevel is set
+    if (athlete.runnerLevel && !isTaper && !isRecovery) {
+      const hudsonPeak = getHudsonPeakWeeklyKm(athlete.runnerLevel, hudsonDist, weeklyVolume);
+      weeklyVolume = Math.min(weeklyVolume * 1.07, hudsonPeak);
+    } else {
+      const loadMultiplier = isTaper ? 0.60 : isRecovery ? 0.75 : 1.07;
+      weeklyVolume *= loadMultiplier;
+    }
+    currentCTL *= isTaper ? 0.60 : isRecovery ? 0.75 : 1.07;
+
+    // Hudson §5: period name for focus label
+    const hudsonPhase = hudsonSeason ? getHudsonPhaseForWeek(hudsonSeason, w) : undefined;
 
     plan.push({
       week: w,
       type: isTaper ? 'Taper' : isRecovery ? 'Recovery' : 'Build',
-      focus: determineFocus(w, weeksToGoal),
+      focus: hudsonPhase ? hudsonPhaseFocus(hudsonPhase.type) : determineFocus(w, weeksToGoal),
       metrics: {
         distance: weeklyVolume.toFixed(1),
-        targetStressScore: Math.round(currentCTL * 7), // Weekly TSS target
+        targetStressScore: Math.round(currentCTL * 7),
       },
-      sessions: generateSessions(weeklyVolume, stats, athlete, isRecovery)
+      sessions: generateSessions(weeklyVolume, stats, athlete, isRecovery),
     });
   }
 
@@ -172,8 +188,14 @@ const getSignifier = (type: string) => {
   return '🍃 Recovery';
 };
 
+const hudsonPhaseFocus = (periodType: string): string => {
+  if (periodType === 'Introductory') return 'Aerobic Base + Neuromuscular (Hudson §5)';
+  if (periodType === 'Fundamental')  return 'Race-Specific Progression (Hudson §5)';
+  return 'Sharpening + Taper (Hudson §5)';
+};
+
 const determineFocus = (w: number, total: number) => {
-  if (w / total < 0.3) return "Base Aerobic Capacity";
-  if (w / total < 0.7) return "Lactate Threshold Development";
-  return "Race Specific Sharpening";
+  if (w / total < 0.3) return 'Base Aerobic Capacity';
+  if (w / total < 0.7) return 'Lactate Threshold Development';
+  return 'Race Specific Sharpening';
 };

@@ -9,7 +9,16 @@ import {
   Phase,
   DayPlan as SharedDayPlan,
   evaluateAdaptiveLevel,
+  hudsonPlanSeason,
+  hudsonPlanWeek,
+  hudsonWeeklyKm,
+  getHudsonPhaseForWeek,
+  isHudsonRecoveryWeek,
+  HudsonSeason,
+  HudsonPhase,
+  HudsonRaceDistance,
 } from '../../../../packages/shared/planner';
+import { RunnerLevel } from '../../../../packages/shared/index';
 import {
   getZonePace,
   calculateNextWeeklyKm,
@@ -29,12 +38,13 @@ export interface Athlete {
   height?: number;
   sex?: 'M' | 'F';
   vdot?: number;
-  goalVdot?: number;             // target VDOT for goal classification
-  previousWeeklyKm?: number;     // actual km completed last week (seed for calculateNextWeeklyKm)
-  availableMinutesPerWeek?: number; // total weekly time budget
+  goalVdot?: number;
+  previousWeeklyKm?: number;
+  availableMinutesPerWeek?: number;
   weeklyPointsTarget?: number;
   adaptiveState?: AdaptiveState;
   pointsHistory?: PointsHistoryEntry[];
+  runnerLevel?: RunnerLevel; // Hudson §4 level — drives volume bands when set
 }
 
 export interface DailyPlan extends SharedDayPlan {
@@ -96,6 +106,13 @@ function phaseToNumber(phase: Phase): number {
   }
 }
 
+function distanceToHudsonRaceDistance(km: number): HudsonRaceDistance {
+  if (km <= 6)  return '5K';
+  if (km <= 12) return '10K';
+  if (km <= 25) return 'HM';
+  return 'marathon';
+}
+
 export const generateSmartPlan = (
   target: TrainingTarget,
   activities: any[],
@@ -154,9 +171,16 @@ export const generateSmartPlan = (
   const todayStr = today.toISOString().split('T')[0];
   const todayReadiness = readinessScores[todayStr] ?? 100;
 
-  const season = planSeason(aRaceDate, startDate);
+  // Hudson branch: when runnerLevel is set, use §4 volume bands + §5 period structure
+  const runnerLevel = athlete.runnerLevel;
+  const hudsonRaceDistance = distanceToHudsonRaceDistance(target.distanceKm || 10);
+  const hudsonSeason: HudsonSeason | null = runnerLevel
+    ? hudsonPlanSeason(aRaceDate, startDate, hudsonRaceDistance)
+    : null;
+
+  const season = planSeason(aRaceDate, startDate); // Daniels fallback
   const recoveryWeeks = 2;
-  const totalWeeks = season.totalWeeks + recoveryWeeks;
+  const totalWeeks = (hudsonSeason ?? season).totalWeeks + recoveryWeeks;
   const freeDayIndices = config.freeDays
     .map(d => DAY_MAP[d.toLowerCase()] ?? parseInt(d))
     .filter(n => !isNaN(n));
@@ -175,6 +199,20 @@ export const generateSmartPlan = (
     const weekStartDate = new Date(startDate);
     weekStartDate.setDate(startDate.getDate() + w * 7);
 
+    // ── Phase resolution ──
+    let hudsonPhase: HudsonPhase | undefined;
+    let weekInPeriod = 1;
+    let periodLength = 1;
+    if (hudsonSeason) {
+      hudsonPhase = getHudsonPhaseForWeek(hudsonSeason, w + 1);
+      if (!hudsonPhase) {
+        // Post-plan recovery weeks
+        hudsonPhase = { type: 'Sharpening', startWeek: w + 1, endWeek: w + 1 };
+      }
+      weekInPeriod = (w + 1) - hudsonPhase.startWeek + 1;
+      periodLength = hudsonPhase.endWeek - hudsonPhase.startWeek + 1;
+    }
+
     let phase = season.phases.find(p => w + 1 >= p.startWeek && w + 1 <= p.endWeek);
     if (!phase) {
       phase = w + 1 > season.totalWeeks
@@ -187,7 +225,7 @@ export const generateSmartPlan = (
     const chronicHistory = last4WeeklyLoads.length > 1 ? last4WeeklyLoads.slice(0, -1) : last4WeeklyLoads;
     const currentAcwr = calculateACWR(acuteLoad, chronicHistory.length > 0 ? chronicHistory : [acuteLoad]);
 
-    // ── Adaptive points target (Section 10) ──
+    // ── Adaptive points target ──
     const adaptResult = evaluateAdaptiveLevel({
       maxHR: athlete.maxHR,
       restHR: athlete.restHR,
@@ -200,44 +238,78 @@ export const generateSmartPlan = (
     adaptivePointsTarget = adaptResult.newTarget;
     adaptiveState = adaptResult.newState;
 
-    // ── Compute this week's km target (derived output) ──
-    const phaseNum = phaseToNumber(phase);
-    let weeklyKm = calculateNextWeeklyKm(
-      previousWeeklyKm,
-      availableMinPerWeek,
-      easyPaceMinPerKm,
-      phaseNum,
-      currentAcwr,
-      w === 0 ? todayReadiness : 100, // only penalise for known readiness (today)
-      freeDayIndices.length
-    );
-
-    // 4th-week deload: –20% every 4th week in the cycle
-    if (w > 0 && (w + 1) % 4 === 0) {
-      weeklyKm = Math.round(weeklyKm * 0.80 * 10) / 10;
-    }
-
     // Pass live fatigue only for the current week; future weeks = 0
     const lmr = w === 0 ? liveLMR : 0;
     const tbf = w === 0 ? liveTBF : 0;
     const readiness = w === 0 ? todayReadiness : 100;
 
-    const weekPlan = planWeek(
-      weekStartDate,
-      phase,
-      freeDayIndices,
-      weeklyKm,
-      planningVdot,
-      last4WeeklyLoads.length > 0
-        ? last4WeeklyLoads.reduce((a, b) => a + b, 0) / last4WeeklyLoads.length
-        : 0,
-      aRaceDate,
-      target.distanceKm,
-      adaptivePointsTarget,
-      lmr,
-      tbf,
-      readiness
-    );
+    // ── Weekly km target ──
+    let weeklyKm: number;
+    if (runnerLevel && hudsonPhase) {
+      // Hudson §4: volume band target, ramped per §14 rules
+      weeklyKm = hudsonWeeklyKm(
+        runnerLevel,
+        hudsonRaceDistance,
+        previousWeeklyKm,
+        hudsonPhase.type,
+        weekInPeriod,
+        periodLength,
+        w + 1,
+        currentAcwr,
+      );
+    } else {
+      // Daniels fallback
+      const phaseNum = phaseToNumber(phase);
+      weeklyKm = calculateNextWeeklyKm(
+        previousWeeklyKm,
+        availableMinPerWeek,
+        easyPaceMinPerKm,
+        phaseNum,
+        currentAcwr,
+        w === 0 ? todayReadiness : 100,
+        freeDayIndices.length,
+      );
+      if (w > 0 && (w + 1) % 4 === 0) weeklyKm = Math.round(weeklyKm * 0.80 * 10) / 10;
+    }
+
+    const chronicLoad = last4WeeklyLoads.length > 0
+      ? last4WeeklyLoads.reduce((a, b) => a + b, 0) / last4WeeklyLoads.length
+      : 0;
+
+    // ── Plan the week ──
+    const weekPlan = runnerLevel && hudsonPhase
+      ? hudsonPlanWeek(
+          weekStartDate,
+          hudsonPhase,
+          w + 1,
+          weekInPeriod,
+          periodLength,
+          weeklyKm,
+          planningVdot,
+          freeDayIndices,
+          chronicLoad,
+          aRaceDate,
+          target.distanceKm,
+          hudsonRaceDistance,
+          adaptivePointsTarget,
+          lmr,
+          tbf,
+          readiness,
+        )
+      : planWeek(
+          weekStartDate,
+          phase,
+          freeDayIndices,
+          weeklyKm,
+          planningVdot,
+          chronicLoad,
+          aRaceDate,
+          target.distanceKm,
+          adaptivePointsTarget,
+          lmr,
+          tbf,
+          readiness,
+        );
 
     // ── Map to mobile DailyPlan ──
     const mobileWeekPlan: DailyPlan[] = weekPlan.map(dp => {
@@ -301,7 +373,7 @@ export const generateSmartPlan = (
         title: finalTitle,
         description: finalDesc,
         intensity: getIntensity(dp),
-        isTaper: phase!.type === 'Taper' || !!raceInfo,
+        isTaper: phase!.type === 'Taper' || (hudsonPhase?.type === 'Sharpening' && weekInPeriod > periodLength / 2) || !!raceInfo,
         isRaceDay: !!raceInfo,
         racePriority: raceInfo?.priority || null
       };
@@ -434,9 +506,28 @@ export const adaptPlanAfterNewWorkout = (
   });
 };
 
+const HUDSON_TITLES: Record<string, string> = {
+  fartlek:          'Fartlek Run',
+  hillSprint:       'Easy + Hill Sprints',
+  hillReps:         'Hill Repetitions',
+  uphillProgression:'Uphill Progression',
+  threshold:        'Threshold Run',
+  progression:      'Progression Run',
+  specEndIntervals: 'Specific-Endurance Intervals',
+  strides:          'Easy + Strides',
+  long:             'Long Run',
+  easy:             'Easy Run',
+  rest:             'Rest Day',
+  race:             'Race Day',
+  timeTrial:        'Time Trial',
+};
+
 function getTitle(dp: SharedDayPlan): string {
+  if (dp.hudsonWorkoutType && HUDSON_TITLES[dp.hudsonWorkoutType]) {
+    return HUDSON_TITLES[dp.hudsonWorkoutType];
+  }
   if (dp.type === 'Rest') return 'Rest Day';
-  if (dp.type === 'Race') return '🏆 Race Day!';
+  if (dp.type === 'Race') return 'Race Day';
   if (dp.type === 'Long') return 'Long Run';
   if (dp.type === 'Quality') {
     if (dp.zone === 'T') return 'Tempo Run';
@@ -447,6 +538,8 @@ function getTitle(dp: SharedDayPlan): string {
 }
 
 function getDescription(dp: SharedDayPlan): string {
+  // Hudson plans carry a pre-built notes string
+  if (dp.notes) return dp.notes;
   if (dp.type === 'Rest') return 'Full recovery day. Focus on mobility and sleep.';
   if (dp.type === 'Race') return `Target: ${dp.distanceKm}km. This is what we trained for. Good luck!`;
   if (dp.type === 'Quality' && dp.reps) {
@@ -459,6 +552,7 @@ function getIntensity(dp: SharedDayPlan): DailyPlan['intensity'] {
   if (dp.type === 'Rest') return 'rest';
   if (dp.type === 'Race') return 'high';
   if (dp.type === 'Quality') return 'high';
+  if (dp.hudsonWorkoutType === 'progression' || dp.hudsonWorkoutType === 'hillSprint') return 'medium';
   if (dp.type === 'Long') return 'medium';
   return 'low';
 }

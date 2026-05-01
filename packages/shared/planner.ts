@@ -39,9 +39,11 @@ export interface DayPlan {
   danielsPoints: number;
   dPlusM?: number;
   dMinusM?: number;
-  reps?: number;       // interval sessions only
-  restSec?: number;    // rest between reps (seconds)
+  reps?: number;
+  restSec?: number;
   planLimitationFlag?: string | null;
+  hudsonWorkoutType?: string; // Hudson §9 workout taxonomy
+  notes?: string;             // human-readable workout description
 }
 
 /**
@@ -556,4 +558,358 @@ export function getHudsonPhaseForWeek(season: HudsonSeason, weekNumber: number):
  */
 export function isHudsonRecoveryWeek(weekNumber: number): boolean {
   return weekNumber > 1 && weekNumber % 4 === 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HUDSON PLAN WEEK — §6 weekly templates + §5 period workout vocabulary
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Hill sprint count progresses linearly: 2 in week 1, +2/week, capped at 10. */
+function hillSprintCount(weekNumber: number): number {
+  return Math.min(10, 2 + (weekNumber - 1) * 2);
+}
+
+/** Fartlek hard-segment duration in seconds: 20→40 sec across intro period. */
+function fartlekSegmentSec(weekInPeriod: number): number {
+  return Math.min(40, 20 + (weekInPeriod - 1) * 5);
+}
+
+/** Progression run finish length: 10–20 min (intro) or 20–30 min (fundamental). */
+function progressionFinishMin(weekInPeriod: number, periodLength: number, periodType: HudsonPeriodType): number {
+  const p = (weekInPeriod - 1) / Math.max(1, periodLength - 1);
+  return periodType === 'Introductory' ? Math.round(10 + p * 10) : Math.round(20 + p * 10);
+}
+
+function hudsonNotes(
+  periodType: HudsonPeriodType,
+  role: 'long' | 'hills' | 'hard1' | 'hard2' | 'moderate' | 'easy',
+  km: number,
+  weekInPeriod: number,
+  periodLength: number,
+  weekNumber: number,
+  raceDistance: HudsonRaceDistance,
+  isAltWeek: boolean,
+): string {
+  const k = km.toFixed(1);
+  switch (role) {
+    case 'long':
+      if (periodType === 'Introductory') return `${k}km easy long run`;
+      if (periodType === 'Fundamental') {
+        const fin = progressionFinishMin(weekInPeriod, periodLength, 'Fundamental');
+        return `${k}km, last ${fin} min @ marathon pace`;
+      }
+      return `${k}km race-specific long — last 20 min threshold effort`;
+
+    case 'hills': {
+      const count = hillSprintCount(weekNumber);
+      return `${k}km easy + ${count}×8-sec hill sprints`;
+    }
+
+    case 'hard1':
+      if (periodType === 'Introductory') {
+        const sec = fartlekSegmentSec(weekInPeriod);
+        return `${k}km easy w/ 8×${sec}-sec @ 3K–1500m pace (fartlek)`;
+      }
+      if (periodType === 'Fundamental') {
+        return isAltWeek
+          ? `1.5km easy + 6×300m uphill @ 3K effort + 1.5km easy (hill reps)`
+          : `${k}km threshold @ 10K pace`;
+      }
+      // Sharpening — specific-endurance per race distance (§8)
+      if (raceDistance === '5K')  return `1.5km easy + 5×1km @ 5K pace w/400m jog + 1.5km easy`;
+      if (raceDistance === '10K') return `1.5km easy + 4×2km @ 10K pace w/3-min recovery + 1km easy`;
+      if (raceDistance === 'HM')  return `1.5km easy + 2×15min @ HM pace w/3-min active recovery + 1.5km easy`;
+      return `1.5km easy + 20min @ M pace + 20min @ M+12sec/km + 1.5km easy`;
+
+    case 'hard2':
+      if (periodType === 'Introductory') {
+        const fin = progressionFinishMin(weekInPeriod, periodLength, 'Introductory');
+        return `${k}km progression, last ${fin} min moderate`;
+      }
+      if (periodType === 'Fundamental') {
+        return isAltWeek
+          ? `${k}km threshold @ HM pace`
+          : `${k}km progression, last 20 min hard`;
+      }
+      return `${k}km race-pace threshold`;
+
+    case 'moderate':
+      return `${k}km moderate progression run`;
+    case 'easy':
+      return `${k}km easy`;
+  }
+}
+
+function hudsonCreateSession(
+  date: Date,
+  type: DayPlan['type'],
+  zone: keyof typeof VDOT_COEFFS,
+  distanceKm: number,
+  vdot: number,
+  hudsonWorkoutType: string,
+  notes?: string,
+): DayPlan {
+  const paceSec = getZonePace(vdot, zone);
+  const distRounded = Math.round(distanceKm * 10) / 10;
+  const durationMin = Math.round((distRounded * paceSec) / 60);
+  const rpe = type === 'Race' ? 10
+    : type === 'Quality' ? (zone === 'I' ? 8 : 7)
+    : type === 'Long'    ? 5
+    : 4;
+  return {
+    date,
+    type,
+    zone,
+    distanceKm: distRounded,
+    durationMin,
+    rpe,
+    load: rpe * durationMin,
+    danielsPoints: calculateDanielsPoints(durationMin, zone),
+    hudsonWorkoutType,
+    notes,
+  };
+}
+
+/**
+ * Compute this week's target km following Hudson ramp rules (§4, §14).
+ * - Introductory: start at 65% of peak, ramp max 10%/week
+ * - Fundamental: ramp max 10%/week toward peak
+ * - Sharpening: peak for first half, 75% for taper
+ * - Recovery week: −20%
+ * ACWR clamp applied on top.
+ */
+export function hudsonWeeklyKm(
+  level: RunnerLevel,
+  raceDistance: HudsonRaceDistance,
+  previousWeeklyKm: number,
+  periodType: HudsonPeriodType,
+  weekInPeriod: number,
+  periodLength: number,
+  weekNumber: number,
+  currentAcwr: number,
+): number {
+  const peak = getHudsonPeakWeeklyKm(level, raceDistance, previousWeeklyKm);
+
+  let target: number;
+  if (isHudsonRecoveryWeek(weekNumber)) {
+    target = Math.round(previousWeeklyKm * 0.80);
+  } else if (periodType === 'Introductory') {
+    const introTarget = Math.round(peak * 0.65);
+    target = Math.min(introTarget, Math.round(previousWeeklyKm * 1.10));
+  } else if (periodType === 'Fundamental') {
+    target = Math.min(peak, Math.round(previousWeeklyKm * 1.10));
+  } else {
+    // Sharpening: peak for first half, taper second half
+    const sharpProgress = weekInPeriod / periodLength;
+    target = sharpProgress > 0.5 ? Math.round(peak * 0.75) : peak;
+  }
+
+  // ACWR guard (§14 rule 1 — never spike load dangerously)
+  if (currentAcwr > 1.5) target = Math.round(target * 0.85);
+  else if (currentAcwr > 1.3) target = Math.round(target * 0.95);
+
+  return Math.max(target, 10); // floor at 10km/week
+}
+
+/**
+ * Hudson §6 weekly template planner.
+ *
+ * Template slots (Sun-anchored, §6):
+ *   Sun → Long run
+ *   Mon → Easy + hill sprints
+ *   Tue → Hard #1 (fartlek / threshold / spec-end intervals)
+ *   Wed → Moderate / progression (Fundamental+ only)
+ *   Fri → Hard #2 (progression / threshold)
+ *   Thu, Sat → Easy fill or Rest if not in availableDays
+ *
+ * Hard rules enforced: §14 rules 6, 7, 9.
+ */
+export function hudsonPlanWeek(
+  startDate: Date,
+  phase: HudsonPhase,
+  weekNumber: number,
+  weekInPeriod: number,
+  periodLength: number,
+  weeklyTargetKm: number,
+  vdot: number,
+  availableDays: number[],    // day-of-week indices (0=Sun…6=Sat) the runner can run
+  chronicLoad: number,
+  aRaceDate?: Date,
+  aRaceDistance?: number,
+  raceDistance: HudsonRaceDistance = '10K',
+  weeklyPointsTarget?: number,
+  legMuscularRisk = 0,
+  totalBodyFatigue = 0,
+  readinessScore = 100,
+): DayPlan[] {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const daysToRace = aRaceDate
+    ? Math.ceil((aRaceDate.getTime() - startDate.getTime()) / msPerDay)
+    : 999;
+  const isRaceWeek = daysToRace >= 0 && daysToRace <= 7;
+  const isRecovery = isHudsonRecoveryWeek(weekNumber);
+  const isAltWeek = weekNumber % 2 === 0;
+
+  let targetKm = weeklyTargetKm;
+  if (isRecovery) targetKm *= 0.80;
+
+  const days: Date[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + i);
+    return d;
+  });
+
+  const plan: (DayPlan | null)[] = new Array(7).fill(null);
+  const availIdx = availableIndicesFromDays(availableDays, startDate);
+  const availSet = new Set(availIdx);
+
+  // Convert absolute day-of-week → offset from startDate.getDay()
+  const dow = (d: number) => (d - startDate.getDay() + 7) % 7;
+  const sunOff = dow(0);
+  const monOff = dow(1);
+  const tueOff = dow(2);
+  const wedOff = dow(3);
+  const friOff = dow(5);
+
+  const qualityAllowed = !isRecovery &&
+    canPlaceQualitySession(legMuscularRisk, totalBodyFatigue, readinessScore);
+
+  // Volume allocations
+  const longKm  = Math.round(targetKm * 0.28 * 10) / 10;
+  const hardKm  = Math.round(targetKm * 0.12 * 10) / 10;
+  const modKm   = Math.round(targetKm * 0.12 * 10) / 10;
+  const hillsKm = Math.round(targetKm * 0.10 * 10) / 10;
+
+  // Helper: find first available slot not already used
+  const firstFree = (preferred: number, fallback?: number[]) => {
+    if (availSet.has(preferred) && plan[preferred] === null) return preferred;
+    const candidates = fallback ?? availIdx;
+    return candidates.find(i => plan[i] === null) ?? -1;
+  };
+
+  // ── Place Race ──
+  if (aRaceDate) {
+    const raceOff = days.findIndex(d => d.toDateString() === aRaceDate.toDateString());
+    if (raceOff !== -1) {
+      plan[raceOff] = hudsonCreateSession(days[raceOff], 'Race', 'I', aRaceDistance || 10, vdot, 'race', 'Race day');
+      plan[raceOff]!.rpe = 10;
+    }
+  }
+
+  // ── Long run (Sunday preferred) ──
+  const longSlot = firstFree(sunOff);
+  if (longSlot !== -1) {
+    const zone: keyof typeof VDOT_COEFFS = phase.type === 'Sharpening' && !isRaceWeek ? 'T' : 'E';
+    plan[longSlot] = hudsonCreateSession(
+      days[longSlot], 'Long', zone, longKm, vdot, 'long',
+      hudsonNotes(phase.type, 'long', longKm, weekInPeriod, periodLength, weekNumber, raceDistance, isAltWeek),
+    );
+  }
+
+  // ── Easy + Hill sprints (Monday preferred) ──
+  const hillSlot = firstFree(monOff, availIdx.filter(i => i !== longSlot));
+  if (hillSlot !== -1 && plan[hillSlot] === null) {
+    plan[hillSlot] = hudsonCreateSession(
+      days[hillSlot], 'Easy', 'E', hillsKm, vdot, 'hillSprint',
+      hudsonNotes(phase.type, 'hills', hillsKm, weekInPeriod, periodLength, weekNumber, raceDistance, isAltWeek),
+    );
+  }
+
+  // ── Hard #1 (Tuesday preferred) — §14 rule 7: never consecutive ──
+  if (qualityAllowed) {
+    const hard1Preferred = availSet.has(tueOff) && plan[tueOff] === null ? tueOff : -1;
+    const hard1Slot = hard1Preferred !== -1 ? hard1Preferred
+      : availIdx.find(i =>
+          plan[i] === null &&
+          (longSlot === -1 || Math.abs(i - longSlot) >= 1) &&
+          (hillSlot === -1 || i !== hillSlot + 1)
+        ) ?? -1;
+
+    if (hard1Slot !== -1) {
+      let zone: keyof typeof VDOT_COEFFS = phase.type === 'Introductory' ? 'I' : 'T';
+      if (phase.type === 'Sharpening') zone = 'I';
+      const hwt = phase.type === 'Introductory' ? 'fartlek'
+        : phase.type === 'Fundamental' ? (isAltWeek ? 'hillReps' : 'threshold')
+        : 'specEndIntervals';
+
+      plan[hard1Slot] = hudsonCreateSession(
+        days[hard1Slot], 'Quality', zone, hardKm, vdot, hwt,
+        hudsonNotes(phase.type, 'hard1', hardKm, weekInPeriod, periodLength, weekNumber, raceDistance, isAltWeek),
+      );
+
+      // ── Hard #2 (Friday preferred) — must be ≥2 days from Hard #1 ──
+      const hard2Preferred = availSet.has(friOff) && plan[friOff] === null ? friOff : -1;
+      const hard2Slot = hard2Preferred !== -1 ? hard2Preferred
+        : availIdx.find(i =>
+            plan[i] === null &&
+            Math.abs(i - hard1Slot) >= 2
+          ) ?? -1;
+
+      if (hard2Slot !== -1) {
+        const hwt2 = phase.type === 'Introductory' ? 'progression'
+          : phase.type === 'Fundamental' ? (isAltWeek ? 'threshold' : 'progression')
+          : 'threshold';
+        plan[hard2Slot] = hudsonCreateSession(
+          days[hard2Slot], 'Quality', 'T', hardKm, vdot, hwt2,
+          hudsonNotes(phase.type, 'hard2', hardKm, weekInPeriod, periodLength, weekNumber, raceDistance, isAltWeek),
+        );
+      }
+    }
+  }
+
+  // ── Moderate / progression run (Wednesday, Fundamental+ only) ──
+  if (!isRecovery && !isRaceWeek && phase.type !== 'Introductory') {
+    if (availSet.has(wedOff) && plan[wedOff] === null) {
+      plan[wedOff] = hudsonCreateSession(
+        days[wedOff], 'Easy', 'E', modKm, vdot, 'progression',
+        hudsonNotes(phase.type, 'moderate', modKm, weekInPeriod, periodLength, weekNumber, raceDistance, isAltWeek),
+      );
+    }
+  }
+
+  // ── Fill remaining available days with Easy runs ──
+  const usedKm = plan.reduce((acc, p) => acc + (p?.distanceKm || 0), 0);
+  const remainKm = Math.max(0, targetKm - usedKm);
+  const emptySlots = availIdx.filter(i => plan[i] === null);
+  if (emptySlots.length > 0) {
+    const eachKm = Math.round((remainKm / emptySlots.length) * 10) / 10;
+    for (const i of emptySlots) {
+      plan[i] = hudsonCreateSession(
+        days[i], 'Easy', 'E', eachKm, vdot, 'easy',
+        hudsonNotes(phase.type, 'easy', eachKm, weekInPeriod, periodLength, weekNumber, raceDistance, isAltWeek),
+      );
+    }
+  }
+
+  // ── Rest/XTrain for unavailable days ──
+  const finalWeek: DayPlan[] = plan.map((p, i) => p || {
+    date: days[i],
+    type: 'Rest' as const,
+    durationMin: 0,
+    distanceKm: 0,
+    rpe: 0,
+    load: 0,
+    danielsPoints: 0,
+    hudsonWorkoutType: 'rest',
+    notes: 'Rest or cross-training (§9)',
+  });
+
+  // ACWR correction (same priority ladder as Daniels planner)
+  if (chronicLoad > 0) {
+    const totalLoad = finalWeek.reduce((a, p) => a + p.load, 0);
+    if (totalLoad / chronicLoad > 1.5) {
+      applyLayeredAcwrCorrection(finalWeek, chronicLoad);
+    }
+  }
+
+  // Plan limitation flag
+  const totalPoints = finalWeek.reduce((a, p) => a + p.danielsPoints, 0);
+  if (weeklyPointsTarget && totalPoints < weeklyPointsTarget * 0.9) {
+    const flag = !qualityAllowed
+      ? `Quality skipped — fatigue/readiness gate. Consider recovery.`
+      : `Target ${weeklyPointsTarget}pts unreachable with ${availIdx.length} days.`;
+    finalWeek.forEach(p => { p.planLimitationFlag = flag; });
+  }
+
+  return finalWeek;
 }
