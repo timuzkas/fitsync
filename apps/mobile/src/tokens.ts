@@ -20,6 +20,7 @@ export const tokens = {
     accentMuted:      '#2e1f5e',
 
     // Status
+    amber:            '#f2c94c',   // low-readiness state
     success:          '#22c55e',
     successMuted:     '#14532d',
     warning:          '#f59e0b',

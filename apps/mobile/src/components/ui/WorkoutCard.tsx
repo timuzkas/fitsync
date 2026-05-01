@@ -85,7 +85,13 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
                 <Text style={styles.title}>
                   {workout?.title || `${workout?.type?.charAt(0).toUpperCase() + workout?.type?.slice(1)}`}
                 </Text>
-                <Text style={styles.date}>{fmtDate(workout?.startedAt)}</Text>
+                <Text style={styles.subtitle}>
+                  {[
+                    fmtDur(workout?.durationSec),
+                    paceStr,
+                    workout?.calories ? `${Math.round(workout.calories)} kcal` : null,
+                  ].filter(Boolean).join(' · ')}
+                </Text>
               </View>
             </View>
             <View style={styles.right}>
@@ -105,19 +111,6 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
                 </>
               )}
             </View>
-          </View>
-          <View style={styles.chips}>
-            <Chip text={fmtDur(workout?.durationSec)} />
-            {paceStr && <Chip text={paceStr} color={tokens.color.primary} />}
-            {workout?.elevationGainM > 0 && (
-              <Chip text={`+${Math.round(workout.elevationGainM)}m`} color={tokens.color.success} />
-            )}
-            {workout?.danielsPoints > 0 && (
-              <Chip text={`${workout.danielsPoints.toFixed(1)} pts`} color={tokens.color.accent} />
-            )}
-            {workout?.avgHr != null && workout?.avgHr > 0 && (
-              <Chip text={`${workout.avgHr} bpm`} color={tokens.color.danger} />
-            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -221,14 +214,6 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
   );
 }
 
-function Chip({ text, color }: { text: string; color?: string }) {
-  return (
-    <View style={styles.chip}>
-      <Text style={[styles.chipText, { color: color || tokens.color.textSecondary }]}>{text}</Text>
-    </View>
-  );
-}
-
 function LoadChip({ label, value, color }: { label: string; value: number; color: string }) {
   if (value <= 0) return null;
   return (
@@ -283,7 +268,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: tokens.space.sm,
   },
   left: {
     flexDirection: 'row',
@@ -301,6 +285,12 @@ const styles = StyleSheet.create({
     color: tokens.color.textMuted,
     marginTop: 1,
   },
+  subtitle: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    fontWeight: '500',
+    marginTop: 2,
+  },
   right: {
     alignItems: 'flex-end',
     flexDirection: 'row',
@@ -317,21 +307,6 @@ const styles = StyleSheet.create({
     color: tokens.color.textMuted,
     fontWeight: '600',
     marginTop: 4,
-  },
-  chips: {
-    flexDirection: 'row',
-    gap: tokens.space.xs,
-    flexWrap: 'wrap',
-  },
-  chip: {
-    backgroundColor: tokens.color.elevated,
-    paddingHorizontal: tokens.space.sm,
-    paddingVertical: 3,
-    borderRadius: tokens.radius.full,
-  },
-  chipText: {
-    fontSize: tokens.font.xs,
-    fontWeight: '600',
   },
   detailsPane: {
     backgroundColor: tokens.color.surface,

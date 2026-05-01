@@ -26,7 +26,6 @@ interface EngineConfig {
   readinessFormula: 'simple' | 'exponential';
   acwrThreshold: number;
   vdot?: number;
-  baselineLevel?: 'beginner' | 'intermediate' | 'advanced';
 }
 
 const DEFAULT_CONFIG: EngineConfig = {
@@ -37,15 +36,17 @@ const DEFAULT_CONFIG: EngineConfig = {
   acwrThreshold: 1.5,
 };
 
-const BASELINE_VDOT = {
-  beginner: 30,
-  intermediate: 40,
-  advanced: 50,
+const RUNNER_LEVEL_LABELS: Record<string, string> = {
+  beginner: 'Beginner',
+  lowKey: 'Low Key',
+  competitive: 'Competitive',
+  highlyCompetitive: 'Highly Competitive',
+  elite: 'Elite',
 };
 
 export default function TrainingEngineScreen() {
   const navigation = useNavigation();
-  const { deviceId, deviceSecret } = useDeviceStore();
+  const { deviceId, deviceSecret, athleteProfile } = useDeviceStore();
   const [config, setConfig] = useState<EngineConfig>(DEFAULT_CONFIG);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -167,50 +168,27 @@ export default function TrainingEngineScreen() {
           </View>
         </View>
 
-        {/* --- FITNESS BASELINE --- */}
+        {/* --- RUNNER LEVEL --- */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Fitness Baseline</Text>
+          <Text style={styles.sectionTitle}>Runner Level</Text>
           <View style={styles.glassCard}>
-            <Text style={styles.cardDesc}>
-              Select your fitness level to set an initial VDOT. This will be automatically replaced when you complete a qualifying Strava run (≥3km, RPE ≥7).
-            </Text>
-            
-            <View style={styles.baselineGrid}>
-              {(['beginner', 'intermediate', 'advanced'] as const).map(level => (
-                <TouchableOpacity
-                  key={level}
-                  style={[
-                    styles.baselineCard,
-                    config.baselineLevel === level && styles.baselineCardActive
-                  ]}
-                  onPress={() => {
-                    updateConfig({ 
-                      baselineLevel: level,
-                      vdot: BASELINE_VDOT[level]
-                    });
-                    Alert.alert(
-                      'VDOT Updated', 
-                      `Set to ${BASELINE_VDOT[level]} (${level} level). This will adjust your training zones.`
-                    );
-                  }}
-                >
-                  <View>
-                    <Text style={[
-                      styles.baselineLabel,
-                      config.baselineLevel === level && styles.baselineLabelActive
-                    ]}>
-                      {level.charAt(0).toUpperCase() + level.slice(1)}
-                    </Text>
-                    <Text style={styles.baselineDesc}>
-                      {level === 'beginner' && '>35 min 5K'}
-                      {level === 'intermediate' && '25-35 min 5K'}
-                      {level === 'advanced' && '<25 min 5K'}
-                    </Text>
-                  </View>
-                  <Text style={styles.baselineVdot}>VDOT {BASELINE_VDOT[level]}</Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.row}>
+              <Text style={styles.cardLabel}>Your Level</Text>
+              <Text style={styles.cardValue}>
+                {athleteProfile?.runnerLevel
+                  ? RUNNER_LEVEL_LABELS[athleteProfile.runnerLevel] ?? athleteProfile.runnerLevel
+                  : 'Not determined'}
+              </Text>
             </View>
+            {athleteProfile?.runnerLevelDeterminedAt ? (
+              <Text style={styles.cardDesc}>
+                Last determined: {new Date(athleteProfile.runnerLevelDeterminedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </Text>
+            ) : (
+              <Text style={styles.cardDesc}>
+                Complete the Runner Profile quiz (person icon on the home screen) to determine your level.
+              </Text>
+            )}
           </View>
         </View>
 

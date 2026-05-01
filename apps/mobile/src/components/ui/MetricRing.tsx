@@ -15,14 +15,14 @@ import { tokens } from '../../tokens';
 
 interface MetricRingProps {
   value: number;   // 0–100
-  label: string;
+  label?: string;
   size?: number;
   strokeWidth?: number;
 }
 
 export function MetricRing({
   value,
-  label,
+  label = '',
   size = 140,
   strokeWidth = 16,
 }: MetricRingProps) {
@@ -31,8 +31,8 @@ export function MetricRing({
 
   const ringColor =
     clamped > 70 ? tokens.color.success :
-    clamped > 40 ? tokens.color.warning :
-    tokens.color.danger;
+    clamped >= 50 ? tokens.color.warning :
+    tokens.color.amber;
 
   const r = size / 2;
 
@@ -83,9 +83,11 @@ export function MetricRing({
         <Text style={[styles.value, { color: tokens.color.textPrimary }]} allowFontScaling={false}>
           {Math.round(clamped)}
         </Text>
-        <Text style={[styles.label, { color: tokens.color.textMuted }]} allowFontScaling={false}>
-          {label.toUpperCase()}
-        </Text>
+        {label ? (
+          <Text style={[styles.label, { color: tokens.color.textMuted }]} allowFontScaling={false}>
+            {label.toUpperCase()}
+          </Text>
+        ) : null}
       </View>
     </View>
   );
@@ -117,8 +119,8 @@ const styles = StyleSheet.create({
  * export function MetricRing({ value, label, size = 140, strokeWidth = 16 }) {
  *   const clamped = Math.max(0, Math.min(100, value));
  *   const ringColor = clamped > 70 ? tokens.color.success
- *                   : clamped > 40 ? tokens.color.warning
- *                   : tokens.color.danger;
+ *                   : clamped >= 50 ? tokens.color.warning
+ *                   : tokens.color.amber;
  *   const r    = (size - strokeWidth) / 2;
  *   const circ = 2 * Math.PI * r;
  *   const dash = (clamped / 100) * circ;

@@ -37,8 +37,11 @@ export interface AthleteProfile {
   // Factor 10: Motivation pattern
   motivationProfile?: 'tendsToOverdo' | 'tendsToUnderdo' | 'needsTuneUpRaces';
 
-  // Derived from factors 1–3 — computed by deriveRunnerLevel(), stored for plan use
+  // Derived from 7-question scoring — stored after RunnerProfile quiz
   runnerLevel?: 'beginner' | 'lowKey' | 'competitive' | 'highlyCompetitive' | 'elite';
+  runnerLevelDeterminedAt?: string; // ISO date
+  limiterType?: 'speed' | 'endurance';
+  riskProfile?: 'conservative' | 'balanced' | 'aggressive';
 }
 
 export interface PlanConfig {

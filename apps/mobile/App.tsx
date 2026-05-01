@@ -27,6 +27,7 @@ import TargetScreen from './src/screens/TargetScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import ProfileEditScreen from './src/screens/ProfileEditScreen';
 import WellnessCalibrationScreen from './src/screens/WellnessCalibrationScreen';
+import RunnerProfileScreen from './src/screens/RunnerProfileScreen';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -261,12 +262,19 @@ function HomeScreen({ navigation }: any) {
         </View>
         <View style={styles.headerBtns}>
           <TouchableOpacity
-            style={[styles.headerBtn, syncing && { opacity: 0.35 }]}
+            style={[styles.headerBtn, syncing && { opacity: 0.4 }]}
             onPress={handleSync}
             disabled={syncing}
             activeOpacity={0.7}
           >
-            <Ionicons name="refresh" size={18} color={tokens.color.textSecondary} />
+            <Ionicons name="cloud-download-outline" size={18} color={tokens.color.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => navigation.navigate('RunnerProfile')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="person-circle-outline" size={18} color={tokens.color.textSecondary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBtn}
@@ -332,21 +340,34 @@ function HomeScreen({ navigation }: any) {
                   ? `${Math.floor(goalTimeSec / 3600)}h ${String(Math.floor((goalTimeSec % 3600) / 60)).padStart(2, '0')}m`
                   : null;
                 const typeLabel = target.type === 'run' ? 'Run' : target.type === 'ride' ? 'Ride' : 'Swim';
+                const nextUp = plannedWorkouts[0];
+                const nextUpDay = nextUp
+                  ? new Date(nextUp.startedAt).toLocaleDateString('en-US', { weekday: 'short' })
+                  : null;
+                const nextUpDist = nextUp?.distanceM
+                  ? `${(nextUp.distanceM / 1000).toFixed(1)} km`
+                  : null;
+
                 return (
                   <>
-                    {/* ── Header: info left, countdown right ── */}
+                    {/* ── Header: info left, next up right ── */}
                     <View style={styles.raceCardHeader}>
                       <View style={styles.raceCardHeaderLeft}>
-                        <Text style={styles.raceCardRaceName}>🏁 {target.distanceKm}K {typeLabel}</Text>
+                        <Text style={styles.raceCardRaceName}>{target.distanceKm}K {typeLabel}</Text>
                         <Text style={styles.raceCardRaceDate}>
-                          {new Date(target.targetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {new Date(target.targetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {` · ${pct}% complete`}
                           {goalTimeStr ? `  ·  Goal ${goalTimeStr}` : ''}
                         </Text>
                       </View>
-                      <View style={styles.raceCardCountdown}>
-                        <Text style={styles.raceCardCountdownNum}>{daysToRace}</Text>
-                        <Text style={styles.raceCardCountdownLabel}>DAYS</Text>
-                      </View>
+                      {nextUp && (
+                        <View style={styles.raceCardNextUp}>
+                          <Text style={styles.raceCardNextUpLabel}>next up</Text>
+                          <Text style={styles.raceCardNextUpValue}>
+                            {[nextUpDist, nextUpDay].filter(Boolean).join(' ')}
+                          </Text>
+                        </View>
+                      )}
                     </View>
 
                     {/* ── Progress bar ── */}
@@ -354,31 +375,7 @@ function HomeScreen({ navigation }: any) {
                       <View style={styles.raceCardProgressBg}>
                         <View style={[styles.raceCardProgressFill, { width: `${pct}%` as any }]} />
                       </View>
-                      <Text style={styles.raceCardProgressPct}>{pct}%</Text>
                     </View>
-
-                    {/* ── Next planned ── */}
-                    {plannedWorkouts[0] && (
-                      <View style={styles.raceCardNext}>
-                        <Text style={styles.raceCardNextLabel}>NEXT PLANNED</Text>
-                        <View style={styles.raceCardNextRow}>
-                          <View style={[styles.raceCardNextDot, { backgroundColor: tokens.color.primary }]} />
-                          <Text style={styles.raceCardNextText}>
-                            {plannedWorkouts[0].title || (plannedWorkouts[0].type.charAt(0).toUpperCase() + plannedWorkouts[0].type.slice(1))}
-                          </Text>
-                          <Text style={styles.raceCardNextSep}>·</Text>
-                          <Text style={styles.raceCardNextMeta}>
-                            {new Date(plannedWorkouts[0].startedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                          </Text>
-                          {plannedWorkouts[0].distanceM ? (
-                            <>
-                              <Text style={styles.raceCardNextSep}>·</Text>
-                              <Text style={styles.raceCardNextMeta}>{(plannedWorkouts[0].distanceM / 1000).toFixed(1)} km</Text>
-                            </>
-                          ) : null}
-                        </View>
-                      </View>
-                    )}
                   </>
                 );
               })()
@@ -393,24 +390,77 @@ function HomeScreen({ navigation }: any) {
         )}
 
         {/* ── Week summary strip ── */}
-        {workouts.length > 0 && (
-          <View style={styles.weekStrip}>
-            <View style={styles.weekChip}>
-              <Text style={styles.weekChipNum}>{weekSessions}</Text>
-              <Text style={styles.weekChipLabel}>sessions</Text>
+        {_hasHydrated && (() => {
+          const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+          const now = Date.now();
+          const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+          // Explicit visible colours per race type — avoid hex+alpha tricks
+          const PLAN_BG: Record<string, string> = {
+            'b-race': tokens.color.primaryMuted,
+            'c-race': tokens.color.accentMuted,
+            'd-race': '#1a2e0a',
+            default:  tokens.color.primaryMuted,
+          };
+          const PLAN_BORDER: Record<string, string> = {
+            'b-race': tokens.color.primary,
+            'c-race': tokens.color.accent,
+            'd-race': '#84cc16',
+            default:  tokens.color.primary,
+          };
+
+          // Compare by local year/month/day — avoids UTC-offset drift
+          const sameDay = (a: Date, b: Date) =>
+            a.getFullYear() === b.getFullYear() &&
+            a.getMonth()    === b.getMonth()    &&
+            a.getDate()     === b.getDate();
+
+          const weekDaySquares = Array.from({ length: 7 }, (_, i) => {
+            const dayDate = new Date(weekStart);
+            dayDate.setDate(weekStart.getDate() + i);
+            const isToday = sameDay(dayDate, todayMidnight);
+            const hasCompleted = workouts.some(w => {
+              const d = new Date(w.startedAt);
+              return sameDay(d, dayDate) && d.getTime() <= now;
+            });
+            const planned = plannedWorkouts.find(w => sameDay(new Date(w.startedAt), dayDate)) || null;
+            return { label: DAY_LABELS[i], hasCompleted, planned, isToday };
+          });
+
+          return (
+            <View style={styles.weekStrip}>
+              {weekDaySquares.map((day, i) => {
+                const purpose     = day.planned?.sessionPurpose || 'default';
+                const planBg      = PLAN_BG[purpose]     || PLAN_BG.default;
+                const planBorder  = PLAN_BORDER[purpose] || PLAN_BORDER.default;
+                const showPlan    = !day.hasCompleted && !!day.planned;
+                const distLabel   = showPlan && day.planned?.distanceM
+                  ? `${(day.planned.distanceM / 1000).toFixed(0)}k`
+                  : null;
+
+                return (
+                  <View key={i} style={styles.weekDay}>
+                    <View style={[
+                      styles.weekDaySquare,
+                      day.hasCompleted && styles.weekDaySquareFilled,
+                      showPlan && { backgroundColor: planBg, borderColor: planBorder, borderWidth: 1.5 },
+                      day.isToday && !day.hasCompleted && !showPlan && styles.weekDaySquareToday,
+                    ]} />
+                    <Text style={[
+                      styles.weekDayLabel,
+                      day.isToday && !showPlan && styles.weekDayLabelToday,
+                      showPlan && { color: planBorder },
+                      day.hasCompleted && { color: tokens.color.success },
+                    ]}>{day.label}</Text>
+                    {distLabel ? (
+                      <Text style={[styles.weekDayPlan, { color: planBorder }]}>{distLabel}</Text>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
-            <View style={styles.weekDivider} />
-            <View style={styles.weekChip}>
-              <Text style={styles.weekChipNum}>{weekKm.toFixed(1)}</Text>
-              <Text style={styles.weekChipLabel}>km this week</Text>
-            </View>
-            <View style={styles.weekDivider} />
-            <View style={styles.weekChip}>
-              <Text style={styles.weekChipNum}>{Math.round(weekElevation)}</Text>
-              <Text style={styles.weekChipLabel}>vert m</Text>
-            </View>
-          </View>
-        )}
+          );
+        })()}
 
         {/* ── Recent workouts ── */}
         <View style={styles.sectionHeader}>
@@ -599,31 +649,24 @@ const styles = StyleSheet.create({
     color: tokens.color.textMuted,
     fontWeight: '500',
   },
-  raceCardCountdown: {
-    alignItems: 'center',
-    minWidth: 52,
+  raceCardNextUp: {
+    alignItems: 'flex-end',
   },
-  raceCardCountdownNum: {
-    fontSize: 42,
-    fontWeight: '800',
-    color: tokens.color.primary,
-    letterSpacing: -2,
-    lineHeight: 46,
-  },
-  raceCardCountdownLabel: {
+  raceCardNextUpLabel: {
     fontSize: 8,
-    fontWeight: '800',
+    fontWeight: '700',
+    color: tokens.color.textTertiary,
+    letterSpacing: 0.8,
+    marginBottom: 3,
+  },
+  raceCardNextUpValue: {
+    fontSize: tokens.font.sm,
+    fontWeight: '700',
     color: tokens.color.primary,
-    letterSpacing: 2,
-    opacity: 0.6,
-    marginTop: -2,
   },
   raceCardProgressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: tokens.space.md,
-    paddingBottom: tokens.space.sm,
-    gap: tokens.space.sm,
+    paddingBottom: tokens.space.md,
   },
   raceCardProgressBg: {
     flex: 1,
@@ -637,40 +680,6 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.color.primary,
     borderRadius: 2,
   },
-  raceCardProgressPct: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: tokens.color.textTertiary,
-    width: 26,
-    textAlign: 'right',
-  },
-  raceCardNext: {
-    borderTopWidth: 1,
-    borderTopColor: tokens.color.border,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-  },
-  raceCardNextLabel: {
-    fontSize: 8,
-    fontWeight: '800',
-    color: tokens.color.textTertiary,
-    letterSpacing: 1.5,
-    marginBottom: 4,
-  },
-  raceCardNextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    flexWrap: 'wrap',
-  },
-  raceCardNextDot: { width: 5, height: 5, borderRadius: 3 },
-  raceCardNextText: {
-    fontSize: tokens.font.xs,
-    fontWeight: '700',
-    color: tokens.color.textSecondary,
-  },
-  raceCardNextSep: { fontSize: tokens.font.xs, color: tokens.color.textTertiary },
-  raceCardNextMeta: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
   raceCardEmpty: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -692,30 +701,41 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.color.border,
     marginBottom: tokens.space.sm,
-    overflow: 'hidden',
-  },
-  weekChip: {
-    flex: 1,
-    alignItems: 'center',
     paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.sm,
+    justifyContent: 'space-around',
   },
-  weekChipNum: {
-    fontSize: tokens.font.lg,
-    fontWeight: '800',
-    color: tokens.color.textPrimary,
-    letterSpacing: -0.5,
+  weekDay: {
+    alignItems: 'center',
+    gap: 4,
   },
-  weekChipLabel: {
+  weekDaySquare: {
+    width: 26,
+    height: 26,
+    borderRadius: tokens.radius.xs,
+    backgroundColor: tokens.color.elevated,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  weekDaySquareFilled: {
+    backgroundColor: tokens.color.successMuted,
+    borderColor: tokens.color.success,
+  },
+  weekDaySquareToday: {
+    borderColor: tokens.color.textMuted,
+  },
+  weekDayLabel: {
     fontSize: 9,
     fontWeight: '600',
     color: tokens.color.textTertiary,
-    letterSpacing: 0.5,
-    marginTop: 2,
   },
-  weekDivider: {
-    width: 1,
-    backgroundColor: tokens.color.border,
-    marginVertical: tokens.space.sm,
+  weekDayLabelToday: {
+    color: tokens.color.textSecondary,
+  },
+  weekDayPlan: {
+    fontSize: 8,
+    fontWeight: '700',
+    marginTop: 1,
   },
 
   /* Section headers */
@@ -885,6 +905,7 @@ export default function App() {
           <Stack.Screen name="Settings" component={SettingsScreen} />
           <Stack.Screen name="ProfileEdit" component={ProfileEditScreen} />
           <Stack.Screen name="WellnessCalibration" component={WellnessCalibrationScreen} />
+          <Stack.Screen name="RunnerProfile" component={RunnerProfileScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

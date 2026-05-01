@@ -14,72 +14,48 @@ interface LoadDashboardProps {
   calibratedAt?: string;
 }
 
-function acwrZone(v?: number): { label: string; color: string; fill: number } {
-  if (v == null) return { label: '—', color: tokens.color.textTertiary, fill: 0 };
-  const fill = Math.min(1, v / 2);
-  if (v > 1.5)  return { label: 'Overreach', color: tokens.color.danger,   fill };
-  if (v > 1.3)  return { label: 'Caution',   color: tokens.color.warning,  fill };
-  if (v >= 0.8) return { label: 'Good',      color: tokens.color.success,  fill };
-  return                { label: 'Low',       color: tokens.color.warning,  fill };
+function acwrZone(v?: number): { color: string } {
+  if (v == null) return { color: tokens.color.textTertiary };
+  if (v > 1.5)  return { color: tokens.color.danger };
+  if (v > 1.3)  return { color: tokens.color.warning };
+  if (v >= 0.8) return { color: tokens.color.success };
+  return         { color: tokens.color.warning };
 }
 
-function riskZone(v: number): { label: string; color: string; fill: number } {
-  const fill = Math.min(1, v / 100);
-  if (v >= 75) return { label: 'High',     color: tokens.color.danger,   fill };
-  if (v >= 45) return { label: 'Moderate', color: tokens.color.warning,  fill };
-  if (v >= 20) return { label: 'Low–mid',  color: '#84cc16',             fill };
-  return         { label: 'Low',       color: tokens.color.success,  fill };
+function riskZone(v: number): { color: string } {
+  if (v >= 75) return { color: tokens.color.danger };
+  if (v >= 45) return { color: tokens.color.warning };
+  if (v >= 20) return { color: '#84cc16' };
+  return         { color: tokens.color.success };
 }
 
-function MetricBar({
-  label, value, zone,
-}: {
-  label: string;
-  value: string;
-  zone: { label: string; color: string; fill: number };
-}) {
+function MetricCol({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <View style={bar.row}>
-      <Text style={bar.label}>{label}</Text>
-      <View style={bar.track}>
-        <View style={[bar.fill, { width: `${Math.round(zone.fill * 100)}%` as any, backgroundColor: zone.color }]} />
-      </View>
-      <Text style={[bar.value, { color: zone.color }]}>{value}</Text>
+    <View style={col.container}>
+      <Text style={col.label}>{label}</Text>
+      <Text style={[col.value, { color }]}>{value}</Text>
     </View>
   );
 }
 
-const bar = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
+const col = StyleSheet.create({
+  container: {
+    flex: 1,
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
+    gap: 3,
   },
   label: {
     fontSize: 8,
     fontWeight: '800',
     color: tokens.color.textTertiary,
-    letterSpacing: 1.1,
-    width: 28,
-  },
-  track: {
-    flex: 1,
-    height: 4,
-    backgroundColor: tokens.color.border,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  fill: {
-    height: '100%',
-    borderRadius: 2,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
   value: {
-    fontSize: 12,
+    fontSize: tokens.font.md,
     fontWeight: '800',
     letterSpacing: -0.4,
-    width: 34,
-    textAlign: 'right',
   },
 });
 
@@ -92,15 +68,22 @@ export function LoadDashboard({
     ? new Date(calibratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null;
 
-  const readinessLabel =
-    readiness > 70 ? 'Ready to train' :
-    readiness > 40 ? 'Light session only' :
-    'Rest recommended';
-
   const readinessColor =
     readiness > 70 ? tokens.color.success :
-    readiness > 40 ? tokens.color.warning :
-    tokens.color.danger;
+    readiness >= 50 ? tokens.color.warning :
+    tokens.color.amber;
+
+  const readinessTitle =
+    readiness > 70 ? 'Ready to train' :
+    readiness >= 50 ? 'Take it moderate' :
+    'Take it easy today';
+
+  const readinessSentence =
+    readiness > 70
+      ? "You're in good shape. Go for your target session."
+      : readiness >= 50
+      ? "Moderate effort today. Listen to your body."
+      : "Your body is still recovering. Light activity or rest.";
 
   const aw  = acwrZone(acwr);
   const lmr = riskZone(legMuscularRisk);
@@ -108,19 +91,32 @@ export function LoadDashboard({
 
   return (
     <View style={styles.container}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.sectionLabel}>READINESS</Text>
+        {calibratedTime ? (
+          <Text style={styles.calibratedAt}>calibrated {calibratedTime}</Text>
+        ) : onCalibrate && calibrateEnabled ? (
+          <TouchableOpacity
+            onPress={onCalibrate}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.calibrateBtnText}>
+              {isWellnessActive ? 'Re-calibrate' : 'Calibrate wellness'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
       <View style={styles.heroRow}>
 
-        {/* ── Ring — left anchor ── */}
-        <MetricRing value={readiness} label="Readiness" size={120} strokeWidth={14} />
+        {/* ── Ring ── */}
+        <MetricRing value={readiness} size={120} strokeWidth={14} />
 
         {/* ── Right panel ── */}
         <View style={styles.panel}>
-
-          {/* Status */}
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: readinessColor }]} />
-            <Text style={[styles.statusLabel, { color: readinessColor }]}>
-              {readinessLabel}
+            <Text style={[styles.statusTitle, { color: readinessColor }]}>
+              {readinessTitle}
             </Text>
             {isWellnessActive && (
               <View style={styles.wellnessPill}>
@@ -129,42 +125,30 @@ export function LoadDashboard({
             )}
           </View>
 
-          {/* Metric bars */}
-          <View style={styles.metricsBlock}>
-            <MetricBar
-              label="ACWR"
+          <Text style={styles.statusSentence}>{readinessSentence}</Text>
+
+          <View style={styles.metricsDivider} />
+
+          <View style={styles.metricsRow}>
+            <MetricCol
+              label="Workload"
               value={acwr != null ? acwr.toFixed(2) : '—'}
-              zone={aw}
+              color={aw.color}
             />
-            <MetricBar
-              label="LEG"
+            <View style={styles.metricsColDivider} />
+            <MetricCol
+              label="Leg fatigue"
               value={String(Math.round(legMuscularRisk))}
-              zone={lmr}
+              color={lmr.color}
             />
-            <MetricBar
-              label="FAT"
+            <View style={styles.metricsColDivider} />
+            <MetricCol
+              label="Fat burn"
               value={String(Math.round(totalBodyFatigue))}
-              zone={tbf}
+              color={tbf.color}
             />
           </View>
 
-          {/* Calculated timestamp */}
-          {calibratedTime && (
-            <Text style={styles.calibratedAt}>Calculated at {calibratedTime}</Text>
-          )}
-
-          {/* Calibrate action — only when in window */}
-          {onCalibrate && calibrateEnabled && (
-            <TouchableOpacity
-              onPress={onCalibrate}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={styles.calibrateBtn}
-            >
-              <Text style={styles.calibrateBtnText}>
-                {isWellnessActive ? 'Re-calibrate' : 'Calibrate wellness'}
-              </Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
     </View>
@@ -173,36 +157,65 @@ export function LoadDashboard({
 
 const styles = StyleSheet.create({
   container: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    padding: tokens.space.md,
     marginBottom: tokens.space.sm,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: tokens.space.sm,
+  },
+  sectionLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: tokens.color.textTertiary,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
   heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: tokens.space.lg,
-    paddingVertical: tokens.space.xs,
+    gap: tokens.space.md,
   },
   panel: {
     flex: 1,
-    gap: 6,
+    gap: 5,
     justifyContent: 'center',
   },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginBottom: 2,
+    gap: 6,
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    flexShrink: 0,
-  },
-  statusLabel: {
+  statusTitle: {
     fontSize: tokens.font.sm,
     fontWeight: '700',
     letterSpacing: 0.1,
     flex: 1,
+  },
+  statusSentence: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    lineHeight: 16,
+  },
+  metricsDivider: {
+    height: 1,
+    backgroundColor: tokens.color.border,
+    marginVertical: 2,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  metricsColDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: tokens.color.border,
   },
   wellnessPill: {
     backgroundColor: tokens.color.primaryMuted,
@@ -215,24 +228,10 @@ const styles = StyleSheet.create({
     color: tokens.color.primary,
     fontWeight: '700',
   },
-  metricsBlock: {
-    gap: 0,
-  },
   calibratedAt: {
     fontSize: 9,
     color: tokens.color.textTertiary,
     letterSpacing: 0.2,
-    marginTop: 1,
-  },
-  calibrateBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: tokens.color.elevated,
-    borderRadius: tokens.radius.sm,
-    paddingHorizontal: tokens.space.sm,
-    paddingVertical: 4,
-    marginTop: 3,
-    borderWidth: 1,
-    borderColor: tokens.color.border,
   },
   calibrateBtnText: {
     fontSize: 10,
