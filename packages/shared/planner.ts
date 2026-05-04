@@ -529,6 +529,41 @@ export function getTuneUpRace(raceDistance: HudsonRaceDistance, weekNumber: numb
 }
 
 /**
+ * Derive running frequency from peak weekly km (Step 3 table, miles → km converted).
+ * Masters athletes are capped at 5 runs/week with a hard minimum of 3.
+ */
+export function getRunsPerWeek(weeklyKm: number, isMasters = false): number {
+  if (isMasters) {
+    if (weeklyKm >= 48) return 5;
+    if (weeklyKm >= 32) return 4;
+    return 3;
+  }
+  if (weeklyKm >= 129) return 12; // Elite: doubles template — all 7 days
+  if (weeklyKm >= 97)  return 10; // Highly competitive: doubles template — all 7 days
+  if (weeklyKm >= 72)  return 7;
+  if (weeklyKm >= 48)  return 6;
+  return 5;
+}
+
+/**
+ * Returns canonical running day-of-week indices (0=Sun…6=Sat) for each Step 3 template.
+ *   5-run: Sun/Mon/Tue/Wed/Fri  (Thu, Sat = off/xtrain)
+ *   6-run: Sun/Mon/Tue/Wed/Thu/Fri  (Sat = off/xtrain)
+ *   7-run: all 7 days
+ *   10/12-run: all 7 days (doubles not modeled — volume distributed across single sessions)
+ * Masters-specific:
+ *   3-run: Sun/Tue/Fri  (Long / Hard1 / Hard2 only)
+ *   4-run: Sun/Mon/Tue/Fri  (Long / Hills / Hard1 / Hard2)
+ */
+export function getTemplateRunDays(runsPerWeek: number): number[] {
+  if (runsPerWeek >= 7)  return [0, 1, 2, 3, 4, 5, 6];
+  if (runsPerWeek === 6) return [0, 1, 2, 3, 4, 5];   // Sun–Fri
+  if (runsPerWeek === 4) return [0, 1, 2, 5];          // Sun/Mon/Tue/Fri
+  if (runsPerWeek === 3) return [0, 2, 5];              // Sun/Tue/Fri
+  return [0, 1, 2, 3, 5]; // 5-run: Sun/Mon/Tue/Wed/Fri
+}
+
+/**
  * Peak specific-endurance workout descriptions by race distance and plan level.
  * Used in the final sharpening weeks (Table 5.1 in source).
  */
@@ -899,6 +934,7 @@ export function hudsonPlanWeek(
   totalBodyFatigue = 0,
   readinessScore = 100,
   runnerLevel: RunnerLevel = 'competitive',
+  isMasters = false,
 ): DayPlan[] {
   const msPerDay = 24 * 60 * 60 * 1000;
   const daysToRace = aRaceDate
@@ -1064,16 +1100,24 @@ export function hudsonPlanWeek(
   }
 
   // ── Rest/XTrain for unavailable days ──
-  const finalWeek: DayPlan[] = plan.map((p, i) => p || {
-    date: days[i],
-    type: 'Rest' as const,
-    durationMin: 0,
-    distanceKm: 0,
-    rpe: 0,
-    load: 0,
-    danielsPoints: 0,
-    hudsonWorkoutType: 'rest',
-    notes: 'Rest or cross-training',
+  // Masters: template-designated off-days become cross-training (not full rest)
+  const templateRunDays = getTemplateRunDays(getRunsPerWeek(targetKm, isMasters));
+  const templateOffsetSet = new Set(templateRunDays.map(d => (d - startDate.getDay() + 7) % 7));
+
+  const finalWeek: DayPlan[] = plan.map((p, i) => {
+    if (p) return p;
+    const isXTrainDay = isMasters && templateOffsetSet.has(i);
+    return {
+      date: days[i],
+      type: 'Rest' as const,
+      durationMin: 0,
+      distanceKm: 0,
+      rpe: 0,
+      load: 0,
+      danielsPoints: 0,
+      hudsonWorkoutType: isXTrainDay ? 'xTrain' : 'rest',
+      notes: isXTrainDay ? 'Cross-training (swim / bike / strength)' : 'Rest or cross-training',
+    };
   });
 
   // ACWR correction (same priority ladder as Daniels planner)

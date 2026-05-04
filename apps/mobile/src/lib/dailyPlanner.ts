@@ -14,6 +14,8 @@ import {
   hudsonWeeklyKm,
   getHudsonPhaseForWeek,
   isHudsonRecoveryWeek,
+  getRunsPerWeek,
+  getTemplateRunDays,
   HudsonSeason,
   HudsonPhase,
   HudsonRaceDistance,
@@ -45,6 +47,7 @@ export interface Athlete {
   adaptiveState?: AdaptiveState;
   pointsHistory?: PointsHistoryEntry[];
   runnerLevel?: RunnerLevel; // Hudson §4 level — drives volume bands when set
+  isMasters?: boolean;       // true when ageCategory === 'masters' — enables XTrain off-days, 3-run minimum
 }
 
 export interface DailyPlan extends SharedDayPlan {
@@ -173,6 +176,7 @@ export const generateSmartPlan = (
 
   // Hudson branch: when runnerLevel is set, use §4 volume bands + §5 period structure
   const runnerLevel = athlete.runnerLevel;
+  const isMasters = athlete.isMasters ?? false;
   const hudsonRaceDistance = distanceToHudsonRaceDistance(target.distanceKm || 10);
   const hudsonSeason: HudsonSeason | null = runnerLevel
     ? hudsonPlanSeason(aRaceDate, startDate, hudsonRaceDistance)
@@ -277,6 +281,11 @@ export const generateSmartPlan = (
       : 0;
 
     // ── Plan the week ──
+    // Template-driven running days: algorithm picks days based on volume (Step 3)
+    const hudsonRunDays = runnerLevel
+      ? getTemplateRunDays(getRunsPerWeek(weeklyKm, isMasters))
+      : freeDayIndices;
+
     const weekPlan = runnerLevel && hudsonPhase
       ? hudsonPlanWeek(
           weekStartDate,
@@ -286,7 +295,7 @@ export const generateSmartPlan = (
           periodLength,
           weeklyKm,
           planningVdot,
-          freeDayIndices,
+          hudsonRunDays,
           chronicLoad,
           aRaceDate,
           target.distanceKm,
@@ -296,6 +305,7 @@ export const generateSmartPlan = (
           tbf,
           readiness,
           runnerLevel,
+          isMasters,
         )
       : planWeek(
           weekStartDate,
@@ -519,6 +529,7 @@ const HUDSON_TITLES: Record<string, string> = {
   long:              'Long Run',
   easy:              'Easy Run',
   rest:              'Rest Day',
+  xTrain:            'Cross-Training',
   race:              'Race Day',
   tuneUpRace:        'Tune-Up Race',
   timeTrial:         'Time Trial',
@@ -555,6 +566,7 @@ function getDescription(dp: SharedDayPlan): string {
 
 function getIntensity(dp: SharedDayPlan): DailyPlan['intensity'] {
   if (dp.type === 'Rest') return 'rest';
+  if (dp.hudsonWorkoutType === 'xTrain') return 'low';
   if (dp.type === 'Race') return 'high';
   if (dp.type === 'Quality') return 'high';
   if (dp.hudsonWorkoutType === 'tuneUpRace') return 'high';

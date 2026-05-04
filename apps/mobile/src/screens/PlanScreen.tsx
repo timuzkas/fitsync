@@ -179,6 +179,8 @@ export default function PlanScreen() {
       height: athleteProfile?.height,
       sex: athleteProfile?.sex,
       vdot: athleteProfile?.vdot || planConfig?.vdot,
+      runnerLevel: athleteProfile?.runnerLevel,
+      isMasters: athleteProfile?.ageCategory === 'masters' && athleteProfile?.ageLevelMode === 'age',
     };
 
     const defaults = { freeDays: ['wed', 'sat', 'sun'], weeklyTargetKm: 30, longRunTargetKm: 12, sessionsPerWeek: 3 };
