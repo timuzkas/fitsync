@@ -295,6 +295,7 @@ export const generateSmartPlan = (
           lmr,
           tbf,
           readiness,
+          runnerLevel,
         )
       : planWeek(
           weekStartDate,
@@ -507,19 +508,23 @@ export const adaptPlanAfterNewWorkout = (
 };
 
 const HUDSON_TITLES: Record<string, string> = {
-  fartlek:          'Fartlek Run',
-  hillSprint:       'Easy + Hill Sprints',
-  hillReps:         'Hill Repetitions',
-  uphillProgression:'Uphill Progression',
-  threshold:        'Threshold Run',
-  progression:      'Progression Run',
-  specEndIntervals: 'Specific-Endurance Intervals',
-  strides:          'Easy + Strides',
-  long:             'Long Run',
-  easy:             'Easy Run',
-  rest:             'Rest Day',
-  race:             'Race Day',
-  timeTrial:        'Time Trial',
+  fartlek:           'Fartlek Run',
+  hillSprint:        'Easy + Hill Sprints',
+  hillReps:          'Hill Repetitions',
+  uphillProgression: 'Uphill Progression',
+  threshold:         'Threshold Run',
+  progression:       'Progression Run',
+  specEndIntervals:  'Specific-Endurance Intervals',
+  strides:           'Easy + Strides',
+  long:              'Long Run',
+  easy:              'Easy Run',
+  rest:              'Rest Day',
+  race:              'Race Day',
+  tuneUpRace:        'Tune-Up Race',
+  timeTrial:         'Time Trial',
+  marathonPaceRun:   'Marathon Pace Run',
+  hardLongRun:       'Hard Long Run',
+  aerobicTest:       'Aerobic Test',
 };
 
 function getTitle(dp: SharedDayPlan): string {
@@ -552,7 +557,9 @@ function getIntensity(dp: SharedDayPlan): DailyPlan['intensity'] {
   if (dp.type === 'Rest') return 'rest';
   if (dp.type === 'Race') return 'high';
   if (dp.type === 'Quality') return 'high';
+  if (dp.hudsonWorkoutType === 'tuneUpRace') return 'high';
   if (dp.hudsonWorkoutType === 'progression' || dp.hudsonWorkoutType === 'hillSprint') return 'medium';
+  if (dp.hudsonWorkoutType === 'hardLongRun' || dp.hudsonWorkoutType === 'marathonPaceRun') return 'high';
   if (dp.type === 'Long') return 'medium';
   return 'low';
 }
