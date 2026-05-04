@@ -42,6 +42,11 @@ export interface AthleteProfile {
   runnerLevelDeterminedAt?: string; // ISO date
   limiterType?: 'speed' | 'endurance';
   riskProfile?: 'conservative' | 'balanced' | 'aggressive';
+
+  // Age-based plan selection (set when runner opts into age-specific plan track)
+  ageCategory?: 'youth' | 'masters' | 'adult';
+  ageLevelMode?: 'age' | 'standard'; // 'age' = use youth/masters plan; 'standard' = use regular level
+  youthLevel?: 'freshman' | 'sophomore' | 'junior' | 'senior'; // only when ageCategory='youth' & ageLevelMode='age'
 }
 
 export interface PlanConfig {

@@ -44,6 +44,13 @@ const RUNNER_LEVEL_LABELS: Record<string, string> = {
   elite: 'Elite',
 };
 
+const YOUTH_LEVEL_LABELS: Record<string, string> = {
+  freshman: 'Freshman',
+  sophomore: 'Sophomore',
+  junior: 'Junior',
+  senior: 'Senior',
+};
+
 export default function TrainingEngineScreen() {
   const navigation = useNavigation();
   const { deviceId, deviceSecret, athleteProfile } = useDeviceStore();
@@ -172,23 +179,68 @@ export default function TrainingEngineScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Runner Level</Text>
           <View style={styles.glassCard}>
-            <View style={styles.row}>
-              <Text style={styles.cardLabel}>Your Level</Text>
-              <Text style={styles.cardValue}>
-                {athleteProfile?.runnerLevel
-                  ? RUNNER_LEVEL_LABELS[athleteProfile.runnerLevel] ?? athleteProfile.runnerLevel
-                  : 'Not determined'}
-              </Text>
-            </View>
-            {athleteProfile?.runnerLevelDeterminedAt ? (
-              <Text style={styles.cardDesc}>
-                Last determined: {new Date(athleteProfile.runnerLevelDeterminedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
-              </Text>
-            ) : (
-              <Text style={styles.cardDesc}>
-                Complete the Runner Profile quiz (person icon on the home screen) to determine your level.
-              </Text>
-            )}
+            {(() => {
+              const p = athleteProfile;
+              if (!p?.runnerLevel) {
+                return (
+                  <>
+                    <View style={styles.row}>
+                      <Text style={styles.cardLabel}>Your Level</Text>
+                      <Text style={styles.cardValue}>Not determined</Text>
+                    </View>
+                    <Text style={styles.cardDesc}>
+                      Complete the Runner Profile quiz (person icon on the home screen) to determine your level.
+                    </Text>
+                  </>
+                );
+              }
+
+              const usingAge = p.ageLevelMode === 'age';
+              const isMasters = p.ageCategory === 'masters';
+              const isYouth = p.ageCategory === 'youth';
+
+              const trackLabel = usingAge
+                ? (isMasters ? 'Masters Plan' : 'Youth Plan')
+                : 'Standard Level';
+
+              const levelDisplay = usingAge
+                ? (isMasters
+                    ? 'Masters'
+                    : (p.youthLevel ? YOUTH_LEVEL_LABELS[p.youthLevel] : RUNNER_LEVEL_LABELS[p.runnerLevel]))
+                : (RUNNER_LEVEL_LABELS[p.runnerLevel] ?? p.runnerLevel);
+
+              const baseLevel = RUNNER_LEVEL_LABELS[p.runnerLevel] ?? p.runnerLevel;
+
+              return (
+                <>
+                  <View style={styles.row}>
+                    <View>
+                      <Text style={styles.cardLabel}>{trackLabel}</Text>
+                      <Text style={styles.cardValue}>{levelDisplay}</Text>
+                    </View>
+                    {usingAge && (
+                      <View style={styles.ageBadge}>
+                        <Text style={styles.ageBadgeText}>
+                          {isMasters ? '40+' : isYouth ? 'U25' : ''}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {usingAge && (
+                    <Text style={[styles.cardDesc, { marginTop: 6, marginBottom: 0 }]}>
+                      Based on {baseLevel} scoring
+                    </Text>
+                  )}
+
+                  {p.runnerLevelDeterminedAt ? (
+                    <Text style={styles.cardDesc}>
+                      Last determined: {new Date(p.runnerLevelDeterminedAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </Text>
+                  ) : null}
+                </>
+              );
+            })()}
           </View>
         </View>
 
@@ -349,6 +401,18 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     color: tokens.color.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  ageBadge: {
+    backgroundColor: 'rgba(255, 159, 10, 0.15)',
+    paddingHorizontal: tokens.space.sm,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.xs,
+  },
+  ageBadgeText: {
+    color: tokens.color.warning,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1,

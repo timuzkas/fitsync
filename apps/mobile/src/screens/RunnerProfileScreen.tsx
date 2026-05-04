@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,12 +28,16 @@ interface Answers {
 }
 
 type RunnerLevel = 'beginner' | 'lowKey' | 'competitive' | 'highlyCompetitive' | 'elite';
+type AgeCategory = 'youth' | 'masters' | 'adult';
+type AgeLevelMode = 'age' | 'standard';
+type YouthLevel = 'freshman' | 'sophomore' | 'junior' | 'senior';
 
 interface ScoringResult {
   level: RunnerLevel;
   score: number;
   limiterType: 'speed' | 'endurance';
   riskProfile: 'conservative' | 'balanced' | 'aggressive';
+  ageCategory: AgeCategory;
 }
 
 // ─── Scoring ─────────────────────────────────────────────────────────────────
@@ -70,7 +74,6 @@ function scoreAnswers(a: Required<Answers>): ScoringResult {
     total >= 7  ? 'lowKey' :
                   'beginner';
 
-  // Override rules
   let minLevel: RunnerLevel | undefined;
   let maxLevel: RunnerLevel | undefined;
 
@@ -85,21 +88,33 @@ function scoreAnswers(a: Required<Answers>): ScoringResult {
 
   base = clampLevel(base, minLevel, maxLevel);
 
-  // Injury penalty (reduce by 1 after clamping)
   if (a.q5 === 'Frequently') {
     const idx = LEVEL_ORDER.indexOf(base);
     if (idx > 0) base = LEVEL_ORDER[idx - 1];
   }
 
   const limiterType: 'speed' | 'endurance' = a.q6 === 'Speed' ? 'speed' : 'endurance';
-
   const riskProfile: 'conservative' | 'balanced' | 'aggressive' =
     (a.q4 === '40+' || a.q5 === 'Frequently') ? 'conservative' :
     (a.q4 === 'Under 25' && a.q5 === 'Rarely') ? 'aggressive' :
     'balanced';
 
-  return { level: base, score: total, limiterType, riskProfile };
+  const ageCategory: AgeCategory =
+    a.q4 === 'Under 25' ? 'youth' :
+    a.q4 === '40+' ? 'masters' :
+    'adult';
+
+  return { level: base, score: total, limiterType, riskProfile, ageCategory };
 }
+
+// Maps regular runner level to youth plan tier
+const YOUTH_LEVEL_MAP: Record<RunnerLevel, YouthLevel> = {
+  beginner: 'freshman',
+  lowKey: 'sophomore',
+  competitive: 'junior',
+  highlyCompetitive: 'senior',
+  elite: 'senior',
+};
 
 // ─── Questions ────────────────────────────────────────────────────────────────
 
@@ -154,7 +169,6 @@ const QUESTIONS: Question[] = [
   },
 ];
 
-// Map display options back to answer keys
 const OPTION_MAP: Record<string, string> = {
   '<40 km': '<40',
   '40–60 km': '40-60',
@@ -189,6 +203,20 @@ const LEVEL_DESC: Record<RunnerLevel, string> = {
   elite: 'Peak performance training. Near-maximal volume with full periodisation.',
 };
 
+const YOUTH_LEVEL_LABELS: Record<YouthLevel, string> = {
+  freshman: 'Freshman',
+  sophomore: 'Sophomore',
+  junior: 'Junior',
+  senior: 'Senior',
+};
+
+const YOUTH_LEVEL_DESC: Record<YouthLevel, string> = {
+  freshman: 'Beginner-level youth plan. 12-week summer base, building aerobic foundation.',
+  sophomore: 'Intermediate youth plan. More volume and first fartlek work.',
+  junior: 'Competitive youth plan. Structured progression and harder workouts.',
+  senior: 'High-level youth plan. Near-senior volume with race-specific stimuli.',
+};
+
 const RISK_LABELS: Record<string, string> = {
   conservative: 'Conservative',
   balanced: 'Balanced',
@@ -208,9 +236,19 @@ export default function RunnerProfileScreen() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Answers>({});
   const [result, setResult] = useState<ScoringResult | null>(null);
+  const [ageChoice, setAgeChoice] = useState<AgeLevelMode | null>(null);
 
   const totalSteps = QUESTIONS.length;
-  const progress = (step / totalSteps) * 100;
+  const progress = step < totalSteps ? (step / totalSteps) * 100 : 100;
+
+  // Age category qualifies for an age-specific plan when Under 25 (youth) or 40+ (masters)
+  const ageQualifies = result && result.ageCategory !== 'adult';
+  // Show age-choice screen when score is ready and choice hasn't been made yet
+  const showAgeChoice = !!result && ageQualifies && ageChoice === null;
+  // Show result screen when either age doesn't qualify, or choice has been made
+  const showResult = !!result && !showAgeChoice;
+
+  const youthLevel: YouthLevel | null = result ? YOUTH_LEVEL_MAP[result.level] : null;
 
   function handleAnswer(raw: string) {
     const q = QUESTIONS[step];
@@ -227,24 +265,138 @@ export default function RunnerProfileScreen() {
   }
 
   function handleBack() {
-    if (result) { setResult(null); return; }
+    if (showResult && ageQualifies) { setAgeChoice(null); return; }
+    if (showResult || showAgeChoice) { setResult(null); setAgeChoice(null); return; }
     if (step > 0) setStep(step - 1);
     else navigation.goBack();
   }
 
   function handleSave() {
     if (!result) return;
+    const mode = ageChoice ?? 'standard';
+    const cat = result.ageCategory;
     setAthleteProfile({
       ...athleteProfile,
       runnerLevel: result.level,
       runnerLevelDeterminedAt: new Date().toISOString(),
       limiterType: result.limiterType,
       riskProfile: result.riskProfile,
+      ageCategory: cat,
+      ageLevelMode: mode,
+      youthLevel: (cat === 'youth' && mode === 'age' && youthLevel) ? youthLevel : undefined,
     });
     navigation.goBack();
   }
 
-  if (result) {
+  function handleRetake() {
+    setStep(0);
+    setAnswers({});
+    setResult(null);
+    setAgeChoice(null);
+  }
+
+  // ── Age-choice screen ──────────────────────────────────────────────────────
+  if (showAgeChoice && result) {
+    const isMasters = result.ageCategory === 'masters';
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={22} color={tokens.color.textSecondary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Plan Type</Text>
+          <View style={{ width: 36 }} />
+        </View>
+
+        <ScrollView style={styles.content} contentContainerStyle={styles.resultContent}>
+          <View style={styles.ageBadge}>
+            <Ionicons
+              name={isMasters ? 'ribbon-outline' : 'school-outline'}
+              size={36}
+              color={tokens.color.primary}
+            />
+            <Text style={styles.ageBadgeTitle}>
+              {isMasters ? 'Masters Runner Detected' : 'Youth Runner Detected'}
+            </Text>
+            <Text style={styles.ageBadgeSub}>
+              {isMasters
+                ? 'Age 40+ qualifies you for a Masters plan — same race-specific stimuli with extra recovery days built in.'
+                : 'Under 25 qualifies you for a Youth base-training track — a 12-week seasonal foundation plan.'}
+            </Text>
+          </View>
+
+          <Text style={styles.choiceHeading}>Which plan track would you like to use?</Text>
+
+          {/* Age-based option */}
+          <TouchableOpacity
+            style={styles.choiceCard}
+            onPress={() => setAgeChoice('age')}
+            activeOpacity={0.75}
+          >
+            <View style={styles.choiceCardRow}>
+              <Ionicons
+                name={isMasters ? 'ribbon' : 'school'}
+                size={22}
+                color={tokens.color.primary}
+              />
+              <View style={styles.choiceCardText}>
+                <Text style={styles.choiceCardTitle}>
+                  {isMasters ? 'Masters Plan' : 'Youth Plan'}
+                </Text>
+                <Text style={styles.choiceCardSub}>
+                  {isMasters
+                    ? 'Age-optimised: lower peak volume, more X-Train days, structured recovery'
+                    : `${youthLevel ? YOUTH_LEVEL_LABELS[youthLevel] : 'Seasonal'} — 12-week summer base, no goal race`}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={tokens.color.textMuted} />
+            </View>
+          </TouchableOpacity>
+
+          {/* Standard option */}
+          <TouchableOpacity
+            style={styles.choiceCard}
+            onPress={() => setAgeChoice('standard')}
+            activeOpacity={0.75}
+          >
+            <View style={styles.choiceCardRow}>
+              <Ionicons name="trending-up" size={22} color={tokens.color.textSecondary} />
+              <View style={styles.choiceCardText}>
+                <Text style={styles.choiceCardTitle}>
+                  Standard Level — {LEVEL_LABELS[result.level]}
+                </Text>
+                <Text style={styles.choiceCardSub}>
+                  Regular race-distance plan matched to your scoring result
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={tokens.color.textMuted} />
+            </View>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ── Result screen ──────────────────────────────────────────────────────────
+  if (showResult && result) {
+    const usingAge = ageChoice === 'age';
+    const isMasters = result.ageCategory === 'masters';
+    const isYouth = result.ageCategory === 'youth';
+
+    const displayTitle = usingAge
+      ? (isMasters ? 'Masters' : youthLevel ? YOUTH_LEVEL_LABELS[youthLevel] : '')
+      : LEVEL_LABELS[result.level];
+
+    const displayDesc = usingAge
+      ? (isMasters
+          ? 'Age-optimised plan: extra recovery days, lower peak volume, structured X-Train sessions. Same race-specific stimuli as standard plans.'
+          : (youthLevel ? YOUTH_LEVEL_DESC[youthLevel] : ''))
+      : LEVEL_DESC[result.level];
+
+    const planTrackLabel = usingAge
+      ? (isMasters ? 'Masters Plan' : 'Youth Plan')
+      : 'Standard Level';
+
     return (
       <View style={styles.container}>
         <View style={styles.header}>
@@ -257,12 +409,19 @@ export default function RunnerProfileScreen() {
 
         <ScrollView style={styles.content} contentContainerStyle={styles.resultContent}>
           <View style={styles.resultBadge}>
-            <Text style={styles.resultBadgeLabel}>Runner Level</Text>
-            <Text style={styles.resultLevel}>{LEVEL_LABELS[result.level]}</Text>
-            <Text style={styles.resultScore}>Score: {result.score.toFixed(1)}</Text>
+            <Text style={styles.resultBadgeLabel}>{planTrackLabel}</Text>
+            <Text style={styles.resultLevel}>{displayTitle}</Text>
+            {!usingAge && (
+              <Text style={styles.resultScore}>Score: {result.score.toFixed(1)}</Text>
+            )}
+            {usingAge && !isMasters && (
+              <Text style={styles.resultScore}>
+                Based on {LEVEL_LABELS[result.level]} scoring
+              </Text>
+            )}
           </View>
 
-          <Text style={styles.resultDesc}>{LEVEL_DESC[result.level]}</Text>
+          <Text style={styles.resultDesc}>{displayDesc}</Text>
 
           <View style={styles.tagsRow}>
             <View style={styles.tag}>
@@ -275,11 +434,21 @@ export default function RunnerProfileScreen() {
             </View>
           </View>
 
+          {usingAge && ageQualifies && (
+            <TouchableOpacity
+              style={styles.switchBtn}
+              onPress={() => setAgeChoice(null)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.switchBtnText}>Switch to Standard Level</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.8}>
             <Text style={styles.saveBtnText}>Save & Apply</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => { setStep(0); setAnswers({}); setResult(null); }} style={styles.retakeBtn}>
+          <TouchableOpacity onPress={handleRetake} style={styles.retakeBtn}>
             <Text style={styles.retakeBtnText}>Retake Quiz</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -287,6 +456,7 @@ export default function RunnerProfileScreen() {
     );
   }
 
+  // ── Quiz screen ────────────────────────────────────────────────────────────
   const q = QUESTIONS[step];
 
   return (
@@ -299,7 +469,6 @@ export default function RunnerProfileScreen() {
         <Text style={styles.stepCounter}>{step + 1}/{totalSteps}</Text>
       </View>
 
-      {/* Progress bar */}
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${progress}%` }]} />
       </View>
@@ -424,6 +593,62 @@ const styles = StyleSheet.create({
     color: tokens.color.textPrimary,
     fontWeight: '600',
   },
+  // Age choice screen
+  ageBadge: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: tokens.color.primary,
+    gap: 12,
+  },
+  ageBadgeTitle: {
+    fontSize: tokens.font.lg,
+    fontWeight: '700',
+    color: tokens.color.textPrimary,
+    textAlign: 'center',
+  },
+  ageBadgeSub: {
+    fontSize: tokens.font.sm,
+    color: tokens.color.textSecondary,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  choiceHeading: {
+    fontSize: tokens.font.md,
+    fontWeight: '600',
+    color: tokens.color.textPrimary,
+    marginBottom: 14,
+  },
+  choiceCard: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    marginBottom: 12,
+  },
+  choiceCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  choiceCardText: {
+    flex: 1,
+  },
+  choiceCardTitle: {
+    fontSize: tokens.font.md,
+    fontWeight: '600',
+    color: tokens.color.textPrimary,
+    marginBottom: 3,
+  },
+  choiceCardSub: {
+    fontSize: tokens.font.sm,
+    color: tokens.color.textMuted,
+    lineHeight: 18,
+  },
   // Result screen
   resultContent: {
     padding: 20,
@@ -464,7 +689,7 @@ const styles = StyleSheet.create({
   tagsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 28,
+    marginBottom: 20,
   },
   tag: {
     flex: 1,
@@ -486,6 +711,19 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.sm,
     color: tokens.color.textPrimary,
     fontWeight: '600',
+  },
+  switchBtn: {
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  switchBtnText: {
+    color: tokens.color.textSecondary,
+    fontSize: tokens.font.sm,
+    fontWeight: '500',
   },
   saveBtn: {
     backgroundColor: tokens.color.primary,
