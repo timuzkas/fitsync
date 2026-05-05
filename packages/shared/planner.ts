@@ -950,6 +950,10 @@ export function hudsonPlanWeek(
   let targetKm = weeklyTargetKm;
   if (isRecovery) targetKm *= 0.80;
 
+  // Masters 3-run plans have exactly 3 run days (Sun/Tue/Thu) — no easy fillers.
+  // Volume must be distributed across all three rather than the standard 5-run percentages.
+  const is3RunMasters = isMasters && getRunsPerWeek(targetKm, true) === 3;
+
   const days: Date[] = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(startDate);
     d.setDate(startDate.getDate() + i);
@@ -973,10 +977,14 @@ export function hudsonPlanWeek(
     canPlaceQualitySession(legMuscularRisk, totalBodyFatigue, readinessScore);
 
   // Volume allocations (Step 3 / Step 5)
-  const longKm  = Math.round(targetKm * 0.28 * 10) / 10;
-  const hardKm  = Math.round(targetKm * 0.12 * 10) / 10;
+  // Masters 3-run: Long ≈36%, Hard ≈32%, Hills = remainder — sums to 100% across 3 runs.
+  // Standard 5-run: Long=28%, Hard=12%, Mod=12%, Hills=10% — remaining fills easy days.
+  const longKm  = Math.round(targetKm * (is3RunMasters ? 0.36 : 0.28) * 10) / 10;
+  const hardKm  = Math.round(targetKm * (is3RunMasters ? 0.32 : 0.12) * 10) / 10;
   const modKm   = Math.round(targetKm * 0.12 * 10) / 10;
-  const hillsKm = Math.round(targetKm * 0.10 * 10) / 10;
+  const hillsKm = is3RunMasters
+    ? Math.max(0, Math.round((targetKm - longKm - hardKm) * 10) / 10)
+    : Math.round(targetKm * 0.10 * 10) / 10;
 
   // Helper: find first available slot not already used
   const firstFree = (preferred: number, fallback?: number[]) => {
@@ -1086,9 +1094,12 @@ export function hudsonPlanWeek(
   }
 
   // ── Fill remaining available days with Easy runs ──
+  // Masters plans have no easy-filler days — empty slots stay as rest/X-train.
+  // This prevents the weekly km remainder from dumping into a single slot as a
+  // giant easy run when a quality session is skipped due to fatigue/readiness.
   const usedKm = plan.reduce((acc, p) => acc + (p?.distanceKm || 0), 0);
   const remainKm = Math.max(0, targetKm - usedKm);
-  const emptySlots = availIdx.filter(i => plan[i] === null);
+  const emptySlots = isMasters ? [] : availIdx.filter(i => plan[i] === null);
   if (emptySlots.length > 0) {
     const eachKm = Math.round((remainKm / emptySlots.length) * 10) / 10;
     for (const i of emptySlots) {
