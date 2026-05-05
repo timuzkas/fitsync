@@ -213,6 +213,13 @@ export const generateSmartPlan = (
         // Post-plan recovery weeks
         hudsonPhase = { type: 'Sharpening', startWeek: w + 1, endWeek: w + 1 };
       }
+      // Masters plans have no Introductory phase — override to Fundamental so
+      // workout descriptions match the book (speed fartlek @ 10K-3K, progression runs).
+      if (isMasters && hudsonPhase.type === 'Introductory') {
+        const sharpPhase = hudsonSeason.phases.find(p => p.type === 'Sharpening');
+        const fundEnd = sharpPhase ? sharpPhase.startWeek - 1 : hudsonSeason.totalWeeks - 4;
+        hudsonPhase = { type: 'Fundamental', startWeek: 1, endWeek: fundEnd };
+      }
       weekInPeriod = (w + 1) - hudsonPhase.startWeek + 1;
       periodLength = hudsonPhase.endWeek - hudsonPhase.startWeek + 1;
     }

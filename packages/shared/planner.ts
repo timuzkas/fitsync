@@ -693,6 +693,7 @@ function hudsonNotes(
   raceDistance: HudsonRaceDistance,
   planLevel: HudsonPlanLevel,
   isSharpPeak: boolean, // last 2 weeks of sharpening
+  isMasters = false,
 ): string {
   const k = km.toFixed(1);
   const sprints = hillSprintCount(weekNumber);
@@ -710,6 +711,13 @@ function hudsonNotes(
         return `${k}km easy long run — build aerobic base`;
       }
       if (periodType === 'Fundamental') {
+        // Masters: week 1 is easy long run; subsequent weeks are progression runs with moderate uphill finish
+        if (isMasters) {
+          if (weekInPeriod === 1) {
+            return `${k}km easy long run — build aerobic base`;
+          }
+          return `${k}km progression run — easy, last mile moderate uphill`;
+        }
         if (raceDistance === 'marathon') {
           return `${k}km — easy ${Math.round(km * 0.6)}km + last ${Math.round(km * 0.4)}km approaching marathon pace`;
         }
@@ -741,6 +749,16 @@ function hudsonNotes(
 
       // Fundamental period: fartlek → race-pace fartlek → hill reps (level 1), threshold (level 2/3)
       if (periodType === 'Fundamental') {
+        // Masters: speed fartlek @ 10K-3K pace, reps/duration progress per book weeks 1-5+
+        if (isMasters) {
+          if (weekInPeriod === 1) {
+            return `${k}km easy w/ 6×30-sec @ 10K–3K pace (speed fartlek)`;
+          }
+          if (weekInPeriod <= 3) {
+            return `${k}km easy w/ 6×40-sec @ 10K–3K pace (speed fartlek)`;
+          }
+          return `${k}km easy w/ 8×40-sec @ 10K–3K pace (speed fartlek)`;
+        }
         if (planLevel === 1) {
           if (!isLaterFundamental) {
             // Early fundamental L1: race_pace_fartlek
@@ -1019,7 +1037,7 @@ export function hudsonPlanWeek(
     const zone: keyof typeof VDOT_COEFFS = phase.type === 'Sharpening' && !isRaceWeek ? 'T' : 'E';
     plan[longSlot] = hudsonCreateSession(
       days[longSlot], 'Long', zone, longKm, vdot, 'long',
-      hudsonNotes(phase.type, 'long', longKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak),
+      hudsonNotes(phase.type, 'long', longKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
     );
   }
 
@@ -1028,7 +1046,7 @@ export function hudsonPlanWeek(
   if (hillSlot !== -1 && plan[hillSlot] === null) {
     plan[hillSlot] = hudsonCreateSession(
       days[hillSlot], 'Easy', 'E', hillsKm, vdot, 'hillSprint',
-      hudsonNotes(phase.type, 'hills', hillsKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak),
+      hudsonNotes(phase.type, 'hills', hillsKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
     );
   }
 
@@ -1060,7 +1078,7 @@ export function hudsonPlanWeek(
 
       plan[hard1Slot] = hudsonCreateSession(
         days[hard1Slot], 'Quality', zone, hardKm, vdot, hwt,
-        hudsonNotes(phase.type, 'hard1', hardKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak),
+        hudsonNotes(phase.type, 'hard1', hardKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
       );
 
       // ── Hard #2 (Friday preferred) — must be ≥2 days from Hard #1 ──
@@ -1077,7 +1095,7 @@ export function hudsonPlanWeek(
           : 'threshold';
         plan[hard2Slot] = hudsonCreateSession(
           days[hard2Slot], 'Quality', 'T', hardKm, vdot, hwt2,
-          hudsonNotes(phase.type, 'hard2', hardKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak),
+          hudsonNotes(phase.type, 'hard2', hardKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
         );
       }
     }
@@ -1088,7 +1106,7 @@ export function hudsonPlanWeek(
     if (availSet.has(wedOff) && plan[wedOff] === null) {
       plan[wedOff] = hudsonCreateSession(
         days[wedOff], 'Easy', 'E', modKm, vdot, 'progression',
-        hudsonNotes(phase.type, 'moderate', modKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak),
+        hudsonNotes(phase.type, 'moderate', modKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
       );
     }
   }
@@ -1105,7 +1123,7 @@ export function hudsonPlanWeek(
     for (const i of emptySlots) {
       plan[i] = hudsonCreateSession(
         days[i], 'Easy', 'E', eachKm, vdot, 'easy',
-        hudsonNotes(phase.type, 'easy', eachKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak),
+        hudsonNotes(phase.type, 'easy', eachKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
       );
     }
   }
