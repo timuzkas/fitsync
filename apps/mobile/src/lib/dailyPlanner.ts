@@ -25,7 +25,6 @@ import {
   getStoredTrainingPhase,
   StoredTrainingPhase,
   redistributeWeekVolume,
-  scaleWorkoutContent,
 } from '../../../../packages/shared/planner';
 import { RunnerLevel } from '../../../../packages/shared/index';
 import {
@@ -204,8 +203,6 @@ export const generateSmartPlan = (
     : null;
 
   const season = planSeason(aRaceDate, startDate); // Daniels fallback
-  const recoveryWeeks = 2;
-  const totalWeeks = (hudsonSeason ?? season).totalWeeks + recoveryWeeks;
   const freeDayIndices = config.freeDays
     .map(d => DAY_MAP[d.toLowerCase()] ?? parseInt(d))
     .filter(n => !isNaN(n));
@@ -214,6 +211,9 @@ export const generateSmartPlan = (
   const entryWeekIndex = config.entryWeekIndex ?? 1;
   const referencePlanTotal = hudsonSeason?.totalWeeks ?? season.totalWeeks;
   const referencePlanLabel = config.referencePlanLabel ?? (hudsonRaceDistance ? `${hudsonRaceDistance} Plan` : 'Training Plan');
+  const totalWeeks = runnerLevel
+    ? Math.max(0, referencePlanTotal - entryWeekIndex + 1)
+    : season.totalWeeks + 2;
 
   // Feature 1: canonical day mapping for level plans
   // daysConfigured (4–7) → fixed day-of-week slots; null = masters/youth fixed schedule
@@ -249,16 +249,16 @@ export const generateSmartPlan = (
   for (let w = 0; w < totalWeeks; w++) {
     const weekStartDate = new Date(startDate);
     weekStartDate.setDate(startDate.getDate() + w * 7);
-
+    const referenceWeekIndex = entryWeekIndex + w;
     // ── Phase resolution ──
     let hudsonPhase: HudsonPhase | undefined;
     let weekInPeriod = 1;
     let periodLength = 1;
     if (hudsonSeason) {
-      hudsonPhase = getHudsonPhaseForWeek(hudsonSeason, w + 1);
+      hudsonPhase = getHudsonPhaseForWeek(hudsonSeason, referenceWeekIndex);
       if (!hudsonPhase) {
         // Post-plan recovery weeks
-        hudsonPhase = { type: 'Sharpening', startWeek: w + 1, endWeek: w + 1 };
+        hudsonPhase = { type: 'Sharpening', startWeek: referenceWeekIndex, endWeek: referenceWeekIndex };
       }
       // Masters plans have no Introductory phase — override to Fundamental so
       // workout descriptions match the book (speed fartlek @ 10K-3K, progression runs).
@@ -267,7 +267,7 @@ export const generateSmartPlan = (
         const fundEnd = sharpPhase ? sharpPhase.startWeek - 1 : hudsonSeason.totalWeeks - 4;
         hudsonPhase = { type: 'Fundamental', startWeek: 1, endWeek: fundEnd };
       }
-      weekInPeriod = (w + 1) - hudsonPhase.startWeek + 1;
+      weekInPeriod = referenceWeekIndex - hudsonPhase.startWeek + 1;
       periodLength = hudsonPhase.endWeek - hudsonPhase.startWeek + 1;
     }
 
@@ -312,7 +312,7 @@ export const generateSmartPlan = (
         hudsonPhase.type,
         weekInPeriod,
         periodLength,
-        w + 1,
+        referenceWeekIndex,
         currentAcwr,
       );
     } else {
@@ -335,14 +335,12 @@ export const generateSmartPlan = (
       : 0;
 
     // Feature 3: reference week index — which page of the book this week corresponds to
-    const referenceWeekIndex = entryWeekIndex + w;
-
     // Feature 3: source tag shown in week header
     const sourceTag = `${referencePlanLabel} · Week ${referenceWeekIndex} of ${referencePlanTotal}`;
 
     // Feature 3: stored training phase for this week
     const storedPhase: StoredTrainingPhase = hudsonPhase && hudsonSeason
-      ? getStoredTrainingPhase(hudsonPhase.type, w + 1, hudsonSeason.totalWeeks)
+      ? getStoredTrainingPhase(hudsonPhase.type, referenceWeekIndex, hudsonSeason.totalWeeks)
       : 'fundamental';
 
     // ── Plan the week ──
@@ -357,6 +355,7 @@ export const generateSmartPlan = (
     // per-day allocation changes.
     let effectiveWeeklyKm = weeklyKm;
     let redistributed = false;
+    let redistributedVolume: ReturnType<typeof redistributeWeekVolume> | undefined;
     if (needsRecalculation && runnerLevel && refPeakKm) {
       const redistribution = redistributeWeekVolume(weeklyKm, daysConfigured as number, isCompetitive);
       // Validate that redistribution total is within 5% of target
@@ -364,6 +363,7 @@ export const generateSmartPlan = (
         + redistribution.fillerEachKm * redistribution.fillerSlots;
       if (Math.abs(total - weeklyKm) <= weeklyKm * 0.05) {
         effectiveWeeklyKm = weeklyKm; // pass same target; hudsonPlanWeek handles allocation
+        redistributedVolume = redistribution;
         redistributed = true;
       }
     }
@@ -372,7 +372,7 @@ export const generateSmartPlan = (
       ? hudsonPlanWeek(
           weekStartDate,
           hudsonPhase,
-          w + 1,
+          referenceWeekIndex,
           weekInPeriod,
           periodLength,
           effectiveWeeklyKm,
@@ -388,6 +388,7 @@ export const generateSmartPlan = (
           readiness,
           runnerLevel,
           isMasters,
+          redistributedVolume,
         )
       : planWeek(
           weekStartDate,

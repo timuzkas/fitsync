@@ -644,6 +644,14 @@ export function redistributeWeekVolume(
   };
 }
 
+export interface RedistributedWeekVolume {
+  longKm: number;
+  hard1Km: number;
+  hard2Km: number;
+  fillerEachKm: number;
+  fillerSlots: number;
+}
+
 /**
  * Scale factor for hard run workout content (Feature 2, §2.5).
  * Preserves workout type; scales reps/volume proportionally.
@@ -1141,6 +1149,7 @@ export function hudsonPlanWeek(
   readinessScore = 100,
   runnerLevel: RunnerLevel = 'competitive',
   isMasters = false,
+  redistributedVolume?: RedistributedWeekVolume,
 ): DayPlan[] {
   const msPerDay = 24 * 60 * 60 * 1000;
   const daysToRace = aRaceDate
@@ -1149,12 +1158,15 @@ export function hudsonPlanWeek(
   const isRaceWeek = daysToRace >= 0 && daysToRace <= 7;
   const isRecovery = isHudsonRecoveryWeek(weekNumber);
   const planLevel = getPlanLevel(runnerLevel);
+  const isFourDaySkeleton =
+    !isMasters &&
+    availableDays.length === 4 &&
+    CANONICAL_TRAINING_DAYS[4].every(day => availableDays.includes(day));
 
   // Peak sharpening = last 2 weeks before taper; use peak SE workout descriptions
   const isSharpPeak = phase.type === 'Sharpening' && weekInPeriod >= periodLength - 1;
 
-  let targetKm = weeklyTargetKm;
-  if (isRecovery) targetKm *= 0.80;
+  const targetKm = weeklyTargetKm;
 
   // Masters 3-run plans have exactly 3 run days (Sun/Tue/Thu) — no easy fillers.
   // Volume must be distributed across all three rather than the standard 5-run percentages.
@@ -1185,12 +1197,14 @@ export function hudsonPlanWeek(
   // Volume allocations (Step 3 / Step 5)
   // Masters 3-run: Long ≈36%, Hard ≈32%, Hills = remainder — sums to 100% across 3 runs.
   // Standard 5-run: Long=28%, Hard=12%, Mod=12%, Hills=10% — remaining fills easy days.
-  const longKm  = Math.round(targetKm * (is3RunMasters ? 0.36 : 0.28) * 10) / 10;
-  const hardKm  = Math.round(targetKm * (is3RunMasters ? 0.32 : 0.12) * 10) / 10;
-  const modKm   = Math.round(targetKm * 0.12 * 10) / 10;
-  const hillsKm = is3RunMasters
-    ? Math.max(0, Math.round((targetKm - longKm - hardKm) * 10) / 10)
-    : Math.round(targetKm * 0.10 * 10) / 10;
+  const longKm  = redistributedVolume?.longKm ?? Math.round(targetKm * (is3RunMasters ? 0.36 : 0.28) * 10) / 10;
+  const hard1Km = redistributedVolume?.hard1Km ?? Math.round(targetKm * (is3RunMasters ? 0.32 : 0.12) * 10) / 10;
+  const hard2Km = redistributedVolume?.hard2Km ?? hard1Km;
+  const fillerKm = redistributedVolume?.fillerEachKm;
+  const modKm   = fillerKm ?? Math.round(targetKm * 0.12 * 10) / 10;
+  const hillsKm = fillerKm ?? (is3RunMasters
+    ? Math.max(0, Math.round((targetKm - longKm - hard1Km) * 10) / 10)
+    : Math.round(targetKm * 0.10 * 10) / 10);
 
   // Helper: find first available slot not already used
   const firstFree = (preferred: number, fallback?: number[]) => {
@@ -1230,13 +1244,7 @@ export function hudsonPlanWeek(
   }
 
   // ── Easy + Hill sprints (Monday preferred) — Step 8 hill sprint progression ──
-  const hillSlot = firstFree(monOff, availIdx.filter(i => i !== longSlot));
-  if (hillSlot !== -1 && plan[hillSlot] === null) {
-    plan[hillSlot] = hudsonCreateSession(
-      days[hillSlot], 'Easy', 'E', hillsKm, vdot, 'hillSprint',
-      hudsonNotes(phase.type, 'hills', hillsKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
-    );
-  }
+  let hillSlot = -1;
 
   // ── Hard #1 (Tuesday preferred) ──
   if (qualityAllowed) {
@@ -1265,8 +1273,8 @@ export function hudsonPlanWeek(
       }
 
       plan[hard1Slot] = hudsonCreateSession(
-        days[hard1Slot], 'Quality', zone, hardKm, vdot, hwt,
-        hudsonNotes(phase.type, 'hard1', hardKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
+        days[hard1Slot], 'Quality', zone, hard1Km, vdot, hwt,
+        hudsonNotes(phase.type, 'hard1', hard1Km, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
       );
 
       // ── Hard #2 (Friday preferred) — must be ≥2 days from Hard #1 ──
@@ -1282,11 +1290,24 @@ export function hudsonPlanWeek(
           ? 'progression'
           : 'threshold';
         plan[hard2Slot] = hudsonCreateSession(
-          days[hard2Slot], 'Quality', 'T', hardKm, vdot, hwt2,
-          hudsonNotes(phase.type, 'hard2', hardKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
+          days[hard2Slot], 'Quality', 'T', hard2Km, vdot, hwt2,
+          hudsonNotes(phase.type, 'hard2', hard2Km, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
         );
       }
     }
+  }
+
+  // Hill sprints follow an easy run. On 4-day plans Monday is dropped, so
+  // the sprint session moves to Wednesday after Tuesday/Friday hard slots.
+  const hillFallback = isFourDaySkeleton
+    ? [wedOff, ...availIdx.filter(i => i !== longSlot && i !== tueOff && i !== friOff)]
+    : [monOff, wedOff, ...availIdx.filter(i => i !== longSlot && i !== tueOff && i !== friOff)];
+  hillSlot = firstFree(isFourDaySkeleton ? wedOff : monOff, hillFallback);
+  if (hillSlot !== -1 && plan[hillSlot] === null) {
+    plan[hillSlot] = hudsonCreateSession(
+      days[hillSlot], 'Easy', 'E', hillsKm, vdot, 'hillSprint',
+      hudsonNotes(phase.type, 'hills', hillsKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
+    );
   }
 
   // ── Moderate run (Wednesday, Fundamental/Sharpening only — Step 3) ──
@@ -1307,7 +1328,7 @@ export function hudsonPlanWeek(
   const remainKm = Math.max(0, targetKm - usedKm);
   const emptySlots = isMasters ? [] : availIdx.filter(i => plan[i] === null);
   if (emptySlots.length > 0) {
-    const eachKm = Math.round((remainKm / emptySlots.length) * 10) / 10;
+    const eachKm = fillerKm ?? Math.round((remainKm / emptySlots.length) * 10) / 10;
     for (const i of emptySlots) {
       plan[i] = hudsonCreateSession(
         days[i], 'Easy', 'E', eachKm, vdot, 'easy',
