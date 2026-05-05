@@ -61,6 +61,8 @@ export interface PlanConfig {
   entryMode?: 'full' | 'trim_start' | 'skip_to';
   /** Feature 3: first week index served from the reference plan (1 = full plan). */
   entryWeekIndex?: number;
+  /** Feature 3: human-readable plan label, e.g. "Marathon Level 2". */
+  referencePlanLabel?: string;
 }
 
 export interface WellnessScores {

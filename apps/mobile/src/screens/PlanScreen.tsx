@@ -567,8 +567,18 @@ export default function PlanScreen() {
               const accentColor = getDayTypeColor(day.type);
               const isLast = idx === upcomingPlan.length - 1;
 
+              // Show week header (source tag) when the tag changes from the previous day
+              const prevTag = idx > 0 ? (upcomingPlan[idx - 1] as any).sourceTag : null;
+              const showWeekHeader = (day as any).sourceTag && (day as any).sourceTag !== prevTag;
+
               return (
-                <View key={day.date.toString()} style={styles.dayRow}>
+                <View key={day.date.toString()}>
+                  {showWeekHeader && (
+                    <View style={styles.weekHeaderRow}>
+                      <Text style={styles.weekHeaderText}>{(day as any).sourceTag}</Text>
+                    </View>
+                  )}
+                <View style={styles.dayRow}>
                   {/* Timeline column */}
                   <View style={styles.timeline}>
                     <View style={[styles.timelineDot, { backgroundColor: accentColor }]} />
@@ -636,6 +646,7 @@ export default function PlanScreen() {
                       </View>
                     )}
                   </TouchableOpacity>
+                </View>
                 </View>
               );
             })}
@@ -878,6 +889,21 @@ const styles = StyleSheet.create({
   toggleBtnActive: { backgroundColor: tokens.color.primary, borderColor: tokens.color.primary },
   toggleBtnText: { fontSize: 10, fontWeight: '700', color: tokens.color.textSecondary },
   toggleBtnTextActive: { color: '#fff' },
+
+  // Week header (source reference tag)
+  weekHeaderRow: {
+    paddingVertical: tokens.space.xs,
+    paddingHorizontal: 2,
+    marginBottom: tokens.space.xs,
+    marginTop: tokens.space.sm,
+  },
+  weekHeaderText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: tokens.color.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
 
   // Timeline + day rows
   dayRow: { flexDirection: 'row', gap: tokens.space.sm, marginBottom: tokens.space.sm },

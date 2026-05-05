@@ -8,6 +8,10 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { tokens } from '../tokens';
 import { TrainingTarget } from '../types';
 import { useDeviceStore, PlanConfig } from '../store/useDeviceStore';
+import {
+  resolvePlanEntry,
+  HudsonRaceDistance,
+} from '../../../../packages/shared/planner';
 
 type TargetRouteParams = {
   Target: { target?: TrainingTarget; planConfig?: PlanConfig };
@@ -29,14 +33,40 @@ const RACE_TYPES = [
   { id: 'swim', icon: '🏊', label: 'Swim' },
 ];
 
+const TRAINING_DAY_OPTIONS = [4, 5, 6, 7];
+
+function distanceToHudsonRaceDistance(km: number): HudsonRaceDistance {
+  if (km <= 6)  return '5K';
+  if (km <= 12) return '10K';
+  if (km <= 25) return 'HM';
+  return 'marathon';
+}
+
+function planLabelFromDistance(km: number, level?: string): string {
+  const dist = km <= 6 ? '5K' : km <= 12 ? '10K' : km <= 25 ? 'Half-Marathon' : 'Marathon';
+  const lvl = level === 'competitive' ? 'Level 2'
+    : (level === 'highlyCompetitive' || level === 'elite') ? 'Level 3'
+    : 'Level 1';
+  return `${dist} ${lvl}`;
+}
+
 export default function TargetScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<TargetRouteParams, 'Target'>>();
   const existingTarget: TrainingTarget | null = route.params?.target || null;
   const routePlanConfig = route.params?.planConfig || null;
-  const { setPlanConfig, planConfig: storedPlanConfig } = useDeviceStore();
+  const { setPlanConfig, planConfig: storedPlanConfig, athleteProfile } = useDeviceStore();
 
   const planConfig = routePlanConfig || storedPlanConfig;
+
+  // masters/youth have fixed schedules — hide day selector
+  const isFixedSchedule =
+    (athleteProfile?.ageCategory === 'masters' || athleteProfile?.ageCategory === 'youth') &&
+    athleteProfile?.ageLevelMode === 'age';
+
+  const [daysConfigured, setDaysConfigured] = useState<number>(
+    planConfig?.daysConfigured ?? 5
+  );
 
   const [targetType, setTargetType] = useState<'run' | 'ride' | 'swim'>(existingTarget?.type || 'run');
   const [distanceKm, setDistanceKm] = useState(existingTarget?.distanceKm ?? 10);
@@ -86,13 +116,11 @@ export default function TargetScreen() {
     return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24 * 7)));
   }
 
-  function handleSave() {
-    const dist = getDistance();
-    if (!dist || dist <= 0) {
-      Alert.alert('Error', 'Please enter a valid distance');
-      return;
-    }
-
+  function navigateWithPlan(
+    dist: number,
+    entryMode: 'full' | 'trim_start' | 'skip_to',
+    entryWeekIndex: number,
+  ) {
     const target: TrainingTarget = {
       id: existingTarget?.id || `target-${Date.now()}`,
       type: targetType,
@@ -104,11 +132,65 @@ export default function TargetScreen() {
       createdAt: existingTarget?.createdAt || new Date().toISOString(),
     };
 
-    if (planConfig) {
-      setPlanConfig(planConfig);
+    const newConfig: PlanConfig = {
+      freeDays: planConfig?.freeDays ?? ['wed', 'sat'],
+      weeklyTargetKm: planConfig?.weeklyTargetKm ?? 30,
+      longRunTargetKm: planConfig?.longRunTargetKm ?? 12,
+      sessionsPerWeek: daysConfigured,
+      daysConfigured: isFixedSchedule ? null : daysConfigured,
+      entryMode,
+      entryWeekIndex,
+      referencePlanLabel: planLabelFromDistance(dist, athleteProfile?.runnerLevel),
+    };
+    setPlanConfig(newConfig);
+    navigation.navigate('Plan', { target, refresh: true });
+  }
+
+  function handleSave() {
+    const dist = getDistance();
+    if (!dist || dist <= 0) {
+      Alert.alert('Error', 'Please enter a valid distance');
+      return;
     }
 
-    navigation.navigate('Plan', { target, refresh: true });
+    // Only run the weeks-to-race check for standard running races
+    if (targetType !== 'run' || dist > 42.2) {
+      navigateWithPlan(dist, 'full', 1);
+      return;
+    }
+
+    const hudsonDist = distanceToHudsonRaceDistance(dist);
+    const entry = resolvePlanEntry(hudsonDist, targetDate, new Date());
+
+    if (entry.status === 'error') {
+      Alert.alert('Not enough time', entry.errorMessage ?? 'Choose a later race date or a shorter distance.');
+      return;
+    }
+
+    if (entry.status === 'needs_prompt') {
+      const { weeksAvailable, planDuration, entryWeekIndex, weeksToSkip } = entry;
+      Alert.alert(
+        'Your race is in ' + weeksAvailable + ' weeks',
+        `The standard ${hudsonDist} plan is ${planDuration} weeks.\n\n` +
+        `Option A — Start from Week 1\nComplete ${weeksAvailable} of ${planDuration} weeks (weeks ${weeksToSkip + 1}–${planDuration}).\nRecommended if you have low current fitness.\n\n` +
+        `Option B — Skip to Week ${entryWeekIndex}\nStart at a higher intensity matching your current fitness.\nRecommended if you have base fitness.`,
+        [
+          {
+            text: 'Start from Week 1',
+            onPress: () => navigateWithPlan(dist, 'trim_start', weeksToSkip + 1),
+          },
+          {
+            text: `Skip to Week ${entryWeekIndex}`,
+            onPress: () => navigateWithPlan(dist, 'skip_to', entryWeekIndex),
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
+    // status === 'full'
+    navigateWithPlan(dist, 'full', 1);
   }
 
   return (
@@ -173,6 +255,33 @@ export default function TargetScreen() {
             />
             <Text style={styles.customUnit}>km</Text>
           </View>
+        )}
+
+        {/* Training Days stepper — hidden for masters/youth fixed schedules */}
+        {!isFixedSchedule && (
+          <>
+            <Text style={styles.sectionTitle}>Training Days per Week</Text>
+            <View style={styles.stepperRow}>
+              {TRAINING_DAY_OPTIONS.map(n => (
+                <TouchableOpacity
+                  key={n}
+                  style={[styles.stepperBtn, daysConfigured === n && styles.stepperBtnActive]}
+                  onPress={() => setDaysConfigured(n)}
+                >
+                  <Text style={[styles.stepperLabel, daysConfigured === n && styles.stepperLabelActive]}>
+                    {n}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {daysConfigured === 4 && (
+              <View style={styles.warningBox}>
+                <Text style={styles.warningText}>
+                  Below the recommended 6 runs/week. Progress will be slower.
+                </Text>
+              </View>
+            )}
+          </>
         )}
 
         <Text style={styles.sectionTitle}>Target Date</Text>
@@ -349,4 +458,19 @@ const styles = StyleSheet.create({
     padding: tokens.space.md, alignItems: 'center',
   },
   saveBtnText: { color: '#fff', fontSize: tokens.font.lg, fontWeight: 'bold' },
+  stepperRow: { flexDirection: 'row', gap: tokens.space.sm },
+  stepperBtn: {
+    flex: 1, paddingVertical: tokens.space.md, alignItems: 'center',
+    backgroundColor: tokens.color.surface, borderRadius: tokens.radius.md,
+    borderWidth: 2, borderColor: 'transparent',
+  },
+  stepperBtnActive: { borderColor: tokens.color.primary, backgroundColor: tokens.color.primaryMuted },
+  stepperLabel: { fontSize: tokens.font.lg, fontWeight: '600', color: tokens.color.textMuted },
+  stepperLabelActive: { color: tokens.color.textPrimary },
+  warningBox: {
+    marginTop: tokens.space.sm, backgroundColor: tokens.color.warning + '18',
+    borderRadius: tokens.radius.sm, padding: tokens.space.sm,
+    borderLeftWidth: 3, borderLeftColor: tokens.color.warning,
+  },
+  warningText: { fontSize: tokens.font.xs, color: tokens.color.warning, lineHeight: 16 },
 });
