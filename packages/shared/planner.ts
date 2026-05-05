@@ -552,14 +552,14 @@ export function getRunsPerWeek(weeklyKm: number, isMasters = false): number {
  *   7-run: all 7 days
  *   10/12-run: all 7 days (doubles not modeled — volume distributed across single sessions)
  * Masters-specific:
- *   3-run: Sun/Tue/Fri  (Long / Hard1 / Hard2 only)
- *   4-run: Sun/Mon/Tue/Fri  (Long / Hills / Hard1 / Hard2)
+ *   3-run: Sun/Tue/Thu  (Long / Hard1 / Hard2 only)
+ *   4-run: Sun/Mon/Tue/Thu  (Long / Hills / Hard1 / Hard2)
  */
 export function getTemplateRunDays(runsPerWeek: number): number[] {
   if (runsPerWeek >= 7)  return [0, 1, 2, 3, 4, 5, 6];
   if (runsPerWeek === 6) return [0, 1, 2, 3, 4, 5];   // Sun–Fri
-  if (runsPerWeek === 4) return [0, 1, 2, 5];          // Sun/Mon/Tue/Fri
-  if (runsPerWeek === 3) return [0, 2, 5];              // Sun/Tue/Fri
+  if (runsPerWeek === 4) return [0, 1, 2, 4];          // Sun/Mon/Tue/Thu
+  if (runsPerWeek === 3) return [0, 2, 4];              // Sun/Tue/Thu
   return [0, 1, 2, 3, 5]; // 5-run: Sun/Mon/Tue/Wed/Fri
 }
 
