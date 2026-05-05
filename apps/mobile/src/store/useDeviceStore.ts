@@ -55,6 +55,12 @@ export interface PlanConfig {
   longRunTargetKm: number;
   sessionsPerWeek: number;
   vdot?: number;
+  /** Feature 1: user-selected training days (4–7). null = masters/youth (fixed schedule). */
+  daysConfigured?: number | null;
+  /** Feature 3: how the plan was entered after weeks-to-race check. */
+  entryMode?: 'full' | 'trim_start' | 'skip_to';
+  /** Feature 3: first week index served from the reference plan (1 = full plan). */
+  entryWeekIndex?: number;
 }
 
 export interface WellnessScores {

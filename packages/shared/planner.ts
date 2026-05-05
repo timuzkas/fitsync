@@ -458,14 +458,201 @@ export function getPlanLevel(level: RunnerLevel): HudsonPlanLevel {
 
 /**
  * Canonical period lengths by race distance (Step 4 table).
- * Sharpening is always 4 weeks.
+ * 5K sharpening = 3 weeks; all other distances = 4 weeks.
  */
-const HUDSON_CANONICAL_PERIODS: Record<HudsonRaceDistance, { intro: number; fund: number; total: number }> = {
-  '5K':      { intro: 3, fund: 6,  total: 12 },
-  '10K':     { intro: 4, fund: 6,  total: 14 },
-  'HM':      { intro: 6, fund: 6,  total: 16 },
-  'marathon':{ intro: 6, fund: 10, total: 20 },
+const HUDSON_CANONICAL_PERIODS: Record<HudsonRaceDistance, { intro: number; fund: number; sharp: number; total: number }> = {
+  '5K':      { intro: 3, fund: 6,  sharp: 3, total: 12 },
+  '10K':     { intro: 4, fund: 6,  sharp: 4, total: 14 },
+  'HM':      { intro: 6, fund: 6,  sharp: 4, total: 16 },
+  'marathon':{ intro: 6, fund: 10, sharp: 4, total: 20 },
 };
+
+/** Sharpening weeks per distance (5K = 3, all others = 4). */
+export const HUDSON_SHARPENING_WEEKS: Record<HudsonRaceDistance, number> = {
+  '5K': 3, '10K': 4, 'HM': 4, 'marathon': 4,
+};
+
+/** Default plan duration (library default from §2 of scaling reference). */
+export const HUDSON_PLAN_DURATION: Record<HudsonRaceDistance, number> = {
+  '5K': 12, '10K': 14, 'HM': 16, 'marathon': 20,
+};
+
+/** Minimum viable weeks before an error is shown (Feature 3, §3.2). */
+export const HUDSON_MIN_VIABLE_WEEKS: Record<HudsonRaceDistance, number> = {
+  '5K': 8, '10K': 10, 'HM': 12, 'marathon': 16,
+};
+
+/**
+ * Canonical run-day slots for user-selectable day counts (Feature 1, §1.3).
+ * Indices: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat.
+ */
+export const CANONICAL_TRAINING_DAYS: Record<number, number[]> = {
+  7: [0, 1, 2, 3, 4, 5, 6],
+  6: [0, 1, 2, 3, 4, 5],
+  5: [0, 1, 2, 3, 5],
+  4: [0, 2, 3, 5],
+};
+
+/** Per-day km minimums for volume redistribution (Feature 2, §2.3). */
+export const HUDSON_DAY_MIN_KM: Record<string, { beginner: number; competitive: number }> = {
+  longRun:  { beginner: 10, competitive: 14 },
+  hardRun:  { beginner: 8,  competitive: 8  },
+  easyRun:  { beginner: 6,  competitive: 6  },
+  moderate: { beginner: 8,  competitive: 8  },
+  hills:    { beginner: 5,  competitive: 5  },
+};
+
+/** Stored training_phase encoding (Feature 3, §6 of scaling reference). */
+export type StoredTrainingPhase = 'fundamental' | 'sharpening' | 'taper';
+
+/**
+ * Maps the live HudsonPhase + week position to the stored training_phase value.
+ * Introductory → fundamental, Fundamental → fundamental,
+ * Sharpening (all but last week) → sharpening, Sharpening last week → taper.
+ */
+export function getStoredTrainingPhase(
+  periodType: HudsonPeriodType,
+  weekNumber: number,
+  totalWeeks: number,
+): StoredTrainingPhase {
+  if (periodType === 'Introductory' || periodType === 'Fundamental') return 'fundamental';
+  if (weekNumber === totalWeeks) return 'taper';
+  return 'sharpening';
+}
+
+/**
+ * Plan entry result for Feature 3 weeks-to-race check.
+ * 'full'         → enough weeks, start from Week 1
+ * 'needs_prompt' → fewer weeks than plan; ask user to choose trim vs skip
+ * 'error'        → not enough weeks even for minimum viable plan
+ */
+export interface PlanEntryResult {
+  status: 'full' | 'needs_prompt' | 'error';
+  weeksAvailable: number;
+  planDuration: number;
+  entryWeekIndex: number;     // 1 when full; calculated skip week when needs_prompt
+  weeksToSkip: number;        // 0 when full
+  sharpening_start: number;   // first sharpening week (used to cap skip)
+  errorMessage?: string;
+}
+
+/**
+ * Feature 3 — weeks-to-race calculation and plan entry point resolver (§3.1–§3.3).
+ */
+export function resolvePlanEntry(
+  distance: HudsonRaceDistance,
+  raceDate: Date,
+  today: Date,
+): PlanEntryResult {
+  const weeksAvailable = Math.floor((raceDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
+  const planDuration   = HUDSON_PLAN_DURATION[distance];
+  const minViable      = HUDSON_MIN_VIABLE_WEEKS[distance];
+  const sharpWeeks     = HUDSON_SHARPENING_WEEKS[distance];
+  const sharpening_start = planDuration - sharpWeeks + 1;
+
+  if (weeksAvailable < minViable) {
+    return {
+      status: 'error',
+      weeksAvailable,
+      planDuration,
+      entryWeekIndex: 1,
+      weeksToSkip: 0,
+      sharpening_start,
+      errorMessage: `Not enough time to prepare safely for this distance. Consider a shorter race or a later date.`,
+    };
+  }
+
+  if (weeksAvailable >= planDuration) {
+    return { status: 'full', weeksAvailable, planDuration, entryWeekIndex: 1, weeksToSkip: 0, sharpening_start };
+  }
+
+  const weeksToSkip    = planDuration - weeksAvailable;
+  const entryWeekIndex = weeksToSkip + 1;
+
+  if (entryWeekIndex >= sharpening_start) {
+    // Cannot skip this far — fall back to minimum viable error
+    return {
+      status: 'error',
+      weeksAvailable,
+      planDuration,
+      entryWeekIndex: 1,
+      weeksToSkip: 0,
+      sharpening_start,
+      errorMessage: `Not enough time to prepare safely for this distance. Consider a shorter race or a later date.`,
+    };
+  }
+
+  return { status: 'needs_prompt', weeksAvailable, planDuration, entryWeekIndex, weeksToSkip, sharpening_start };
+}
+
+/**
+ * Feature 2 — volume redistribution algorithm (§2.4).
+ * Returns per-slot km targets when the user's daysConfigured differs from
+ * the reference plan's default runs/week.
+ *
+ * @param targetPeakKm   Midpoint of the level's rounded volume band (§3 rounded bands)
+ * @param daysConfigured User's selected day count (4–7)
+ * @param isCompetitive  true for competitive+ (uses larger long-run minimum)
+ */
+export function redistributeWeekVolume(
+  targetPeakKm: number,
+  daysConfigured: number,
+  isCompetitive: boolean,
+): { longKm: number; hard1Km: number; hard2Km: number; fillerEachKm: number; fillerSlots: number } {
+  const minLong = isCompetitive ? 14 : 10;
+  const minHard = 8;
+  const minEasy = 6;
+
+  // Step 1 — assign minimums
+  let longKm  = minLong;
+  let hard1Km = minHard;
+  let hard2Km = minHard;
+  const remaining = targetPeakKm - longKm - hard1Km - hard2Km;
+
+  // Step 2 — distribute remaining to filler days
+  const fillerSlots = Math.max(0, daysConfigured - 3); // subtract Sun + Tue + Fri
+  let fillerEachKm  = fillerSlots > 0 ? Math.round((remaining / fillerSlots) * 2) / 2 : 0; // round to 0.5
+  if (fillerSlots > 0 && fillerEachKm < minEasy) {
+    const shortfall = (minEasy - fillerEachKm) * fillerSlots;
+    fillerEachKm = minEasy;
+    longKm += shortfall; // cap and add remainder to long run
+  }
+
+  // Step 3 — long run cap at 35% of weekly total
+  const maxLong = 0.35 * targetPeakKm;
+  if (longKm > maxLong) {
+    const excess = longKm - maxLong;
+    longKm -= excess;
+    if (fillerSlots > 0) {
+      fillerEachKm = Math.round((fillerEachKm + excess / fillerSlots) * 2) / 2;
+    }
+  }
+
+  // Step 4 — validate total; adjust long run to close gap
+  const sum = longKm + hard1Km + hard2Km + fillerEachKm * fillerSlots;
+  const gap = targetPeakKm - sum;
+  if (Math.abs(gap) > targetPeakKm * 0.05) {
+    longKm += gap;
+  }
+
+  return {
+    longKm:       Math.round(longKm * 10) / 10,
+    hard1Km:      Math.round(hard1Km * 10) / 10,
+    hard2Km:      Math.round(hard2Km * 10) / 10,
+    fillerEachKm: Math.round(fillerEachKm * 10) / 10,
+    fillerSlots,
+  };
+}
+
+/**
+ * Scale factor for hard run workout content (Feature 2, §2.5).
+ * Preserves workout type; scales reps/volume proportionally.
+ * Floor: 2 reps minimum for interval sessions.
+ */
+export function scaleWorkoutContent(reps: number | undefined, scaleFactor: number): number | undefined {
+  if (reps === undefined) return undefined;
+  return Math.max(2, Math.round(reps * scaleFactor));
+}
 
 /** Valid total-week range per distance (Step 2). */
 const HUDSON_PLAN_RANGE: Record<HudsonRaceDistance, { min: number; max: number }> = {
@@ -552,14 +739,14 @@ export function getRunsPerWeek(weeklyKm: number, isMasters = false): number {
  *   7-run: all 7 days
  *   10/12-run: all 7 days (doubles not modeled — volume distributed across single sessions)
  * Masters-specific:
- *   3-run: Sun/Tue/Thu  (Long / Hard1 / Hard2 only)
+ *   3-run: Tue/Thu/Sat  (per spec §1.2 — Long / Hard1 / Hard2)
  *   4-run: Sun/Mon/Tue/Thu  (Long / Hills / Hard1 / Hard2)
  */
-export function getTemplateRunDays(runsPerWeek: number): number[] {
+export function getTemplateRunDays(runsPerWeek: number, isMasters = false): number[] {
   if (runsPerWeek >= 7)  return [0, 1, 2, 3, 4, 5, 6];
   if (runsPerWeek === 6) return [0, 1, 2, 3, 4, 5];   // Sun–Fri
   if (runsPerWeek === 4) return [0, 1, 2, 4];          // Sun/Mon/Tue/Thu
-  if (runsPerWeek === 3) return [0, 2, 4];              // Sun/Tue/Thu
+  if (runsPerWeek === 3) return isMasters ? [2, 4, 6] : [0, 2, 4]; // Masters: Tue/Thu/Sat; standard: Sun/Tue/Thu
   return [0, 1, 2, 3, 5]; // 5-run: Sun/Mon/Tue/Wed/Fri
 }
 
@@ -621,7 +808,7 @@ export function hudsonPlanSeason(
   const range = HUDSON_PLAN_RANGE[distance];
   const totalWeeks = Math.max(range.min, Math.min(range.max, availableWeeks));
 
-  const sharpWeeks = 4; // always — §5 universal rule
+  const sharpWeeks = HUDSON_CANONICAL_PERIODS[distance].sharp; // 3 for 5K, 4 for all others
   const buildWeeks = totalWeeks - sharpWeeks;
 
   const canonical = HUDSON_CANONICAL_PERIODS[distance];
@@ -737,7 +924,8 @@ function hudsonNotes(
     }
 
     case 'hills': {
-      return `${k}km easy + ${sprints}×8-sec steep hill sprints`;
+      const sprintSec = periodType === 'Introductory' ? 8 : periodType === 'Fundamental' ? 10 : 12;
+      return `${k}km easy + ${sprints}×${sprintSec}-sec steep hill sprints`;
     }
 
     case 'hard1': {
@@ -1130,7 +1318,7 @@ export function hudsonPlanWeek(
 
   // ── Rest/XTrain for unavailable days ──
   // Masters: template-designated off-days become cross-training (not full rest)
-  const templateRunDays = getTemplateRunDays(getRunsPerWeek(targetKm, isMasters));
+  const templateRunDays = getTemplateRunDays(getRunsPerWeek(targetKm, isMasters), isMasters);
   const templateOffsetSet = new Set(templateRunDays.map(d => (d - startDate.getDay() + 7) % 7));
 
   const finalWeek: DayPlan[] = plan.map((p, i) => {

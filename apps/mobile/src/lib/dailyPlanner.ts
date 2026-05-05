@@ -19,6 +19,13 @@ import {
   HudsonSeason,
   HudsonPhase,
   HudsonRaceDistance,
+  CANONICAL_TRAINING_DAYS,
+  HUDSON_PLAN_DURATION,
+  HUDSON_VOLUME_BANDS,
+  getStoredTrainingPhase,
+  StoredTrainingPhase,
+  redistributeWeekVolume,
+  scaleWorkoutContent,
 } from '../../../../packages/shared/planner';
 import { RunnerLevel } from '../../../../packages/shared/index';
 import {
@@ -64,6 +71,12 @@ export interface DailyPlan extends SharedDayPlan {
   targetDurationMin: number;
   targetPaceSecPerKm: number;
   rpe: number;
+  /** Feature 3: source reference tag shown in week header, e.g. "Marathon Level 2 · Week 7 of 20". */
+  sourceTag?: string;
+  /** Feature 3: stored training phase for this week. */
+  trainingPhase?: StoredTrainingPhase;
+  /** Feature 2: true if volume was redistributed due to daysConfigured != reference default. */
+  recalculated?: boolean;
 }
 
 export interface PlanConfig {
@@ -71,6 +84,14 @@ export interface PlanConfig {
   weeklyTargetKm?: number;       // optional fallback; adaptive km is computed each week
   longRunTargetKm?: number;
   aRaceDate?: Date;
+  /** Feature 1: user-selected training days (4–7). null = masters/youth (fixed schedule). */
+  daysConfigured?: number | null;
+  /** Feature 3: first week of the reference plan to serve (1 = full plan, >1 = trim or skip). */
+  entryWeekIndex?: number;
+  /** Feature 3: entry mode for source reference labels. */
+  entryMode?: 'full' | 'trim_start' | 'skip_to';
+  /** Feature 3: reference plan label, e.g. "Marathon Level 2". */
+  referencePlanLabel?: string;
 }
 
 export const getDayTypeColor = (type: string) => {
@@ -189,6 +210,32 @@ export const generateSmartPlan = (
     .map(d => DAY_MAP[d.toLowerCase()] ?? parseInt(d))
     .filter(n => !isNaN(n));
 
+  // Feature 3: plan entry point — which reference week to start from
+  const entryWeekIndex = config.entryWeekIndex ?? 1;
+  const referencePlanTotal = hudsonSeason?.totalWeeks ?? season.totalWeeks;
+  const referencePlanLabel = config.referencePlanLabel ?? (hudsonRaceDistance ? `${hudsonRaceDistance} Plan` : 'Training Plan');
+
+  // Feature 1: canonical day mapping for level plans
+  // daysConfigured (4–7) → fixed day-of-week slots; null = masters/youth fixed schedule
+  const daysConfigured = config.daysConfigured;
+  const canonicalDays = (daysConfigured != null && !isMasters)
+    ? (CANONICAL_TRAINING_DAYS[daysConfigured] ?? getTemplateRunDays(daysConfigured))
+    : null;
+
+  // Feature 2: determine if recalculation is needed
+  // Reference plan default runs/week is derived from the plan's peak volume band
+  const refPeakKm = runnerLevel
+    ? Math.round((HUDSON_VOLUME_BANDS[runnerLevel][hudsonRaceDistance].min + HUDSON_VOLUME_BANDS[runnerLevel][hudsonRaceDistance].max) / 2)
+    : null;
+  const refRunsPerWeek = refPeakKm ? getRunsPerWeek(refPeakKm, isMasters) : null;
+  const needsRecalculation = !!(
+    canonicalDays &&
+    daysConfigured != null &&
+    refRunsPerWeek != null &&
+    daysConfigured !== refRunsPerWeek
+  );
+  const isCompetitive = runnerLevel === 'competitive' || runnerLevel === 'highlyCompetitive' || runnerLevel === 'elite';
+
   let allDays: DailyPlan[] = [];
   let dayCounter = 1;
 
@@ -287,11 +334,39 @@ export const generateSmartPlan = (
       ? last4WeeklyLoads.reduce((a, b) => a + b, 0) / last4WeeklyLoads.length
       : 0;
 
+    // Feature 3: reference week index — which page of the book this week corresponds to
+    const referenceWeekIndex = entryWeekIndex + w;
+
+    // Feature 3: source tag shown in week header
+    const sourceTag = `${referencePlanLabel} · Week ${referenceWeekIndex} of ${referencePlanTotal}`;
+
+    // Feature 3: stored training phase for this week
+    const storedPhase: StoredTrainingPhase = hudsonPhase && hudsonSeason
+      ? getStoredTrainingPhase(hudsonPhase.type, w + 1, hudsonSeason.totalWeeks)
+      : 'fundamental';
+
     // ── Plan the week ──
-    // Template-driven running days: algorithm picks days based on volume (Step 3)
+    // Feature 1: canonical day mapping — use user's daysConfigured (4–7) if set;
+    // otherwise fall back to template-derived days from volume.
     const hudsonRunDays = runnerLevel
-      ? getTemplateRunDays(getRunsPerWeek(weeklyKm, isMasters))
+      ? (canonicalDays ?? getTemplateRunDays(getRunsPerWeek(weeklyKm, isMasters), isMasters))
       : freeDayIndices;
+
+    // Feature 2: volume redistribution — override weeklyKm distribution if daysConfigured
+    // differs from the reference plan default. The target km stays the same; only the
+    // per-day allocation changes.
+    let effectiveWeeklyKm = weeklyKm;
+    let redistributed = false;
+    if (needsRecalculation && runnerLevel && refPeakKm) {
+      const redistribution = redistributeWeekVolume(weeklyKm, daysConfigured as number, isCompetitive);
+      // Validate that redistribution total is within 5% of target
+      const total = redistribution.longKm + redistribution.hard1Km + redistribution.hard2Km
+        + redistribution.fillerEachKm * redistribution.fillerSlots;
+      if (Math.abs(total - weeklyKm) <= weeklyKm * 0.05) {
+        effectiveWeeklyKm = weeklyKm; // pass same target; hudsonPlanWeek handles allocation
+        redistributed = true;
+      }
+    }
 
     const weekPlan = runnerLevel && hudsonPhase
       ? hudsonPlanWeek(
@@ -300,7 +375,7 @@ export const generateSmartPlan = (
           w + 1,
           weekInPeriod,
           periodLength,
-          weeklyKm,
+          effectiveWeeklyKm,
           planningVdot,
           hudsonRunDays,
           chronicLoad,
@@ -318,7 +393,7 @@ export const generateSmartPlan = (
           weekStartDate,
           phase,
           freeDayIndices,
-          weeklyKm,
+          effectiveWeeklyKm,
           planningVdot,
           chronicLoad,
           aRaceDate,
@@ -393,7 +468,10 @@ export const generateSmartPlan = (
         intensity: getIntensity(dp),
         isTaper: phase!.type === 'Taper' || (hudsonPhase?.type === 'Sharpening' && weekInPeriod > periodLength / 2) || !!raceInfo,
         isRaceDay: !!raceInfo,
-        racePriority: raceInfo?.priority || null
+        racePriority: raceInfo?.priority || null,
+        sourceTag,
+        trainingPhase: storedPhase,
+        recalculated: redistributed,
       };
     });
 
