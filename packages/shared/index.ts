@@ -86,6 +86,8 @@ export type HudsonWorkoutType =
   | 'uphillProgression'
   | 'strides'
   | 'fartlek'
+  | 'ladder'
+  | 'speedIntervals'
   | 'specEndIntervals'
   | 'race'
   | 'timeTrial'

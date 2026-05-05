@@ -406,11 +406,177 @@ function createSession(
   };
 }
 
+type Masters10KTemplateWorkout = {
+  day: number;
+  type: DayPlan['type'];
+  zone: keyof typeof VDOT_COEFFS;
+  distanceKm: number;
+  hudsonWorkoutType: string;
+  notes: string;
+};
+
+type Masters10KTemplateWeek = {
+  workouts: Masters10KTemplateWorkout[];
+  xTrainMin: number;
+  coreSets: number;
+};
+
+const MASTERS_10K_TEMPLATE: Record<number, Masters10KTemplateWeek> = {
+  1: { coreSets: 1, xTrainMin: 20, workouts: [
+    { day: 0, type: 'Long', zone: 'E', distanceKm: 8, hudsonWorkoutType: 'long', notes: '8 km easy' },
+    { day: 2, type: 'Easy', zone: 'E', distanceKm: 6.4, hudsonWorkoutType: 'easy', notes: '6.4 km + 1 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'I', distanceKm: 8, hudsonWorkoutType: 'fartlek', notes: '8 km easy w/ 6 x 30 sec intervals @ 10K-3K pace' },
+  ] },
+  2: { coreSets: 1, xTrainMin: 25, workouts: [
+    { day: 0, type: 'Long', zone: 'E', distanceKm: 9.6, hudsonWorkoutType: 'progression', notes: '9.6 km easy, last mile moderate (uphill if possible)' },
+    { day: 2, type: 'Easy', zone: 'E', distanceKm: 8, hudsonWorkoutType: 'easy', notes: '8 km + 2 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'I', distanceKm: 9.6, hudsonWorkoutType: 'fartlek', notes: '9.6 km easy w/ 6 x 40 sec intervals @ 10K-3K pace' },
+  ] },
+  3: { coreSets: 1, xTrainMin: 30, workouts: [
+    { day: 0, type: 'Long', zone: 'E', distanceKm: 11.2, hudsonWorkoutType: 'progression', notes: '11.2 km easy, last 2.4 km moderate (uphill if possible)' },
+    { day: 2, type: 'Easy', zone: 'E', distanceKm: 8, hudsonWorkoutType: 'easy', notes: '8 km + 3 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'I', distanceKm: 11.2, hudsonWorkoutType: 'fartlek', notes: '11.2 km easy w/ 6 x 40 sec intervals @ 10K-3K pace' },
+  ] },
+  4: { coreSets: 1, xTrainMin: 20, workouts: [
+    { day: 0, type: 'Long', zone: 'E', distanceKm: 8.8, hudsonWorkoutType: 'progression', notes: '8.8 km easy, last 2.4 km moderate (uphill if possible)' },
+    { day: 2, type: 'Easy', zone: 'E', distanceKm: 6.4, hudsonWorkoutType: 'easy', notes: '6.4 km + 4 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'I', distanceKm: 8, hudsonWorkoutType: 'fartlek', notes: '8 km easy w/ 6 x 30 sec intervals @ 10K-3K pace' },
+  ] },
+  5: { coreSets: 2, xTrainMin: 30, workouts: [
+    { day: 0, type: 'Long', zone: 'E', distanceKm: 11.2, hudsonWorkoutType: 'progression', notes: '11.2 km, last 3.2 km moderate' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 4.8, hudsonWorkoutType: 'hillReps', notes: '1.6 km easy + 4 x 400m uphill @ 3K effort w/ 2-min active recoveries + 1.6 km easy + 5 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 9.6, hudsonWorkoutType: 'progression', notes: '6.4 km easy + 3.2 km hard (uphill if possible)' },
+  ] },
+  6: { coreSets: 2, xTrainMin: 35, workouts: [
+    { day: 0, type: 'Long', zone: 'E', distanceKm: 12, hudsonWorkoutType: 'progression', notes: '12 km, last 4 km moderate' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 11.2, hudsonWorkoutType: 'specEndIntervals', notes: '1.6 km easy + 5 x 1.6 km @ current 10K pace w/ 2-min active recoveries + 1.6 km easy + 6 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'I', distanceKm: 9.6, hudsonWorkoutType: 'ladder', notes: '1.6 km easy + 2 x (6 min, 5 min, 4 min, 3 min, 2 min, 1 min @ 10K-1500m pace w/ 2-min active recoveries) + 1.6 km easy' },
+  ] },
+  7: { coreSets: 2, xTrainMin: 40, workouts: [
+    { day: 0, type: 'Long', zone: 'T', distanceKm: 11.2, hudsonWorkoutType: 'progression', notes: '11.2 km, last mile hard' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 5.6, hudsonWorkoutType: 'hillReps', notes: '1.6 km easy + 4 x 600m uphill @ 3K effort w/ 2-min active recoveries + 1.6 km easy + 7 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 11.2, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 3.2 km @ half-marathon pace + 1.6 km easy + 3.2 km @ half-marathon pace + 1.6 km easy' },
+  ] },
+  8: { coreSets: 2, xTrainMin: 30, workouts: [
+    { day: 0, type: 'Long', zone: 'E', distanceKm: 8, hudsonWorkoutType: 'progression', notes: '8 km, last 3.2 km moderate' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 5.6, hudsonWorkoutType: 'speedIntervals', notes: '1.6 km easy + 6 x 400m @ 3K pace w/ 2-min active recoveries + 1.6 km easy + 8 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 8, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 1.6 km @ half-marathon pace + 1.6 km easy + 1.6 km @ 10K pace + 1.6 km easy' },
+  ] },
+  9: { coreSets: 2, xTrainMin: 40, workouts: [
+    { day: 0, type: 'Long', zone: 'T', distanceKm: 11.2, hudsonWorkoutType: 'progression', notes: '11.2 km, last 3.2 km hard' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 9.6, hudsonWorkoutType: 'ladder', notes: '1.6 km easy + 2 x (6 min, 5 min, 4 min, 3 min, 2 min, 1 min @ 10K-1500m pace w/ 2-min active recoveries) + 1.6 km easy + 9 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 12.8, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 4 km @ half-marathon pace + 1.6 km easy + 4 km @ half-marathon pace + 1.6 km easy' },
+  ] },
+  10: { coreSets: 3, xTrainMin: 45, workouts: [
+    { day: 0, type: 'Long', zone: 'T', distanceKm: 12.8, hudsonWorkoutType: 'progression', notes: '12.8 km, last 4.8 km progressing moderate to hard' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 11.2, hudsonWorkoutType: 'specEndIntervals', notes: '1.6 km easy + 8 x 1K @ goal 10K pace w/ 2-min active recoveries + 1.6 km easy + 10 x 8-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 9.6, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 6.4 km @ half-marathon pace + 1.6 km easy' },
+  ] },
+  11: { coreSets: 3, xTrainMin: 50, workouts: [
+    { day: 0, type: 'Long', zone: 'T', distanceKm: 13.6, hudsonWorkoutType: 'progression', notes: '13.6 km, last 5.6 km progressing moderate to hard' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 13.2, hudsonWorkoutType: 'specEndIntervals', notes: '1.6 km easy + 10 x 1K @ goal 10K pace w/ 2-min active recoveries + 1.6 km easy + 8 x 10-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 12.8, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 4.8 km @ half-marathon pace + 1.6 km easy + 3.2 km @ 10K pace + 1.6 km easy' },
+  ] },
+  12: { coreSets: 3, xTrainMin: 40, workouts: [
+    { day: 0, type: 'Long', zone: 'T', distanceKm: 9.6, hudsonWorkoutType: 'progression', notes: '9.6 km, last 3.2 km progressing moderate to hard' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 9.6, hudsonWorkoutType: 'specEndIntervals', notes: '1.6 km easy + 4 x 1.6 km @ goal 10K pace w/ 2-min active recoveries + 1.6 km easy + 8 x 10-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 9.6, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 3.2 km @ half-marathon pace + 1.6 km easy + 1.6 km @ 10K pace + 1.6 km easy' },
+  ] },
+  13: { coreSets: 3, xTrainMin: 50, workouts: [
+    { day: 0, type: 'Long', zone: 'T', distanceKm: 14.4, hudsonWorkoutType: 'hardLongRun', notes: '3.2 km easy + 3.2 km @ half-marathon pace + 1.6 km easy + 3.2 km @ half-marathon pace + 3.2 km easy' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 9.2, hudsonWorkoutType: 'specEndIntervals', notes: '1.6 km easy + 6 x 1K @ goal 10K pace w/ 2-min active recoveries + 1.6 km easy + 8 x 10-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 12.8, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 4.8 km @ half-marathon pace + 1.6 km easy + 3.2 km @ 10K pace + 1.6 km easy' },
+  ] },
+  14: { coreSets: 2, xTrainMin: 55, workouts: [
+    { day: 0, type: 'Long', zone: 'T', distanceKm: 14.4, hudsonWorkoutType: 'hardLongRun', notes: '3.2 km easy + 4 km @ half-marathon pace + 1.6 km easy + 4 km @ half-marathon pace + 1.6 km easy' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 11.2, hudsonWorkoutType: 'specEndIntervals', notes: '1.6 km easy + 4 x 2K @ goal 10K pace w/ 2-min active recoveries + 1.6 km easy + 10 x 10-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 12, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 5.6 km @ half-marathon pace + 1.6 km easy + 1.6 km @ 10K pace + 1.6 km easy' },
+  ] },
+  15: { coreSets: 2, xTrainMin: 60, workouts: [
+    { day: 0, type: 'Long', zone: 'T', distanceKm: 14.4, hudsonWorkoutType: 'hardLongRun', notes: '1.6 km easy + 4.8 km @ half-marathon pace + 1.6 km easy + 4.8 km @ half-marathon pace + 1.6 km easy' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 12.2, hudsonWorkoutType: 'specEndIntervals', notes: '1.6 km easy + 4 x 2K @ goal 10K pace w/ 90-sec active recoveries + 1K max effort + 1.6 km easy + 10 x 10-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 11.2, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 3.2 km @ 10K pace + 1.6 km easy + 3.2 km @ 10K pace + 1.6 km easy' },
+  ] },
+  16: { coreSets: 1, xTrainMin: 0, workouts: [
+    { day: 0, type: 'Long', zone: 'T', distanceKm: 12.8, hudsonWorkoutType: 'hardLongRun', notes: '3.2 km easy + 6.4 km @ half-marathon pace + 3.2 km easy' },
+    { day: 2, type: 'Quality', zone: 'I', distanceKm: 7.2, hudsonWorkoutType: 'specEndIntervals', notes: '1.6 km easy + 2 x 2K @ goal 10K pace w/ 2-min active recoveries + 1.6 km easy + 4 x 10-sec hill sprint' },
+    { day: 4, type: 'Quality', zone: 'T', distanceKm: 6.4, hudsonWorkoutType: 'threshold', notes: '1.6 km easy + 3.2 km @ 10K pace + 1.6 km easy' },
+    { day: 6, type: 'Race', zone: 'I', distanceKm: 10, hudsonWorkoutType: 'race', notes: 'Goal Race - 10K' },
+  ] },
+};
+
 const QUALITY_DURATION_LIMITS: Record<string, { min: number; max: number }> = {
   T: { min: 20, max: 40 },
   I: { min: 12, max: 20 },
   R: { min: 10, max: 20 },
 };
+
+function hudsonCreateRestLikeDay(
+  date: Date,
+  hudsonWorkoutType: 'rest' | 'xTrain',
+  notes: string,
+  durationMin = 0,
+): DayPlan {
+  const rpe = durationMin > 0 ? 3 : 0;
+  return {
+    date,
+    type: 'Rest',
+    durationMin,
+    distanceKm: 0,
+    rpe,
+    load: rpe * durationMin,
+    danielsPoints: 0,
+    hudsonWorkoutType,
+    notes,
+  };
+}
+
+function hudsonMasters10KTemplateWeek(
+  startDate: Date,
+  weekNumber: number,
+  vdot: number,
+  chronicLoad: number,
+): DayPlan[] | null {
+  const template = MASTERS_10K_TEMPLATE[weekNumber];
+  if (!template) return null;
+
+  const days: Date[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + i);
+    return d;
+  });
+  const dow = (day: number) => (day - startDate.getDay() + 7) % 7;
+  const plan = days.map(date =>
+    hudsonCreateRestLikeDay(date, 'rest', `Rest (Core Strength ${template.coreSets} set${template.coreSets === 1 ? '' : 's'} in source)`),
+  );
+
+  for (const workout of template.workouts) {
+    const offset = dow(workout.day);
+    plan[offset] = hudsonCreateSession(
+      days[offset],
+      workout.type,
+      workout.zone,
+      workout.distanceKm,
+      vdot,
+      workout.hudsonWorkoutType,
+      workout.notes,
+    );
+  }
+
+  const satOff = dow(6);
+  if (weekNumber !== 16) {
+    plan[satOff] = hudsonCreateRestLikeDay(days[satOff], 'xTrain', `X-Train ${template.xTrainMin} min`, template.xTrainMin);
+  }
+
+  if (chronicLoad > 0) {
+    const totalLoad = plan.reduce((a, p) => a + p.load, 0);
+    if (totalLoad / chronicLoad > 1.5) {
+      applyLayeredAcwrCorrection(plan, chronicLoad);
+    }
+  }
+
+  return plan;
+}
 
 function findQualityDay(available: number[], plan: (DayPlan | null)[], raceIdx: number): number {
   return available.find(i =>
@@ -482,6 +648,11 @@ export const HUDSON_MIN_VIABLE_WEEKS: Record<HudsonRaceDistance, number> = {
   '5K': 8, '10K': 10, 'HM': 12, 'marathon': 16,
 };
 
+export const HUDSON_MASTERS_PLAN_DURATION: Partial<Record<HudsonRaceDistance, number>> = {
+  '10K': 16,
+  marathon: 20,
+};
+
 /**
  * Canonical run-day slots for user-selectable day counts (Feature 1, §1.3).
  * Indices: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat.
@@ -543,9 +714,10 @@ export function resolvePlanEntry(
   distance: HudsonRaceDistance,
   raceDate: Date,
   today: Date,
+  planDurationOverride?: number,
 ): PlanEntryResult {
   const weeksAvailable = Math.floor((raceDate.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
-  const planDuration   = HUDSON_PLAN_DURATION[distance];
+  const planDuration   = planDurationOverride ?? HUDSON_PLAN_DURATION[distance];
   const minViable      = HUDSON_MIN_VIABLE_WEEKS[distance];
   const sharpWeeks     = HUDSON_SHARPENING_WEEKS[distance];
   const sharpening_start = planDuration - sharpWeeks + 1;
@@ -754,7 +926,7 @@ export function getTemplateRunDays(runsPerWeek: number, isMasters = false): numb
   if (runsPerWeek >= 7)  return [0, 1, 2, 3, 4, 5, 6];
   if (runsPerWeek === 6) return [0, 1, 2, 3, 4, 5];   // Sun–Fri
   if (runsPerWeek === 4) return [0, 1, 2, 4];          // Sun/Mon/Tue/Thu
-  if (runsPerWeek === 3) return isMasters ? [2, 4, 6] : [0, 2, 4]; // Masters: Tue/Thu/Sat; standard: Sun/Tue/Thu
+  if (runsPerWeek === 3) return [0, 2, 4];             // Sun/Tue/Thu
   return [0, 1, 2, 3, 5]; // 5-run: Sun/Mon/Tue/Wed/Fri
 }
 
@@ -809,12 +981,13 @@ export function hudsonPlanSeason(
   raceDate: Date,
   startDate: Date,
   distance: HudsonRaceDistance,
+  totalWeeksOverride?: number,
 ): HudsonSeason {
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
   const availableWeeks = Math.round((raceDate.getTime() - startDate.getTime()) / msPerWeek);
 
   const range = HUDSON_PLAN_RANGE[distance];
-  const totalWeeks = Math.max(range.min, Math.min(range.max, availableWeeks));
+  const totalWeeks = totalWeeksOverride ?? Math.max(range.min, Math.min(range.max, availableWeeks));
 
   const sharpWeeks = HUDSON_CANONICAL_PERIODS[distance].sharp; // 3 for 5K, 4 for all others
   const buildWeeks = totalWeeks - sharpWeeks;
@@ -1166,11 +1339,16 @@ export function hudsonPlanWeek(
   // Peak sharpening = last 2 weeks before taper; use peak SE workout descriptions
   const isSharpPeak = phase.type === 'Sharpening' && weekInPeriod >= periodLength - 1;
 
+  if (isMasters && raceDistance === '10K') {
+    const mastersWeek = hudsonMasters10KTemplateWeek(startDate, weekNumber, vdot, chronicLoad);
+    if (mastersWeek) return mastersWeek;
+  }
+
   const targetKm = weeklyTargetKm;
 
-  // Masters 3-run plans have exactly 3 run days (Sun/Tue/Thu) — no easy fillers.
+  // Masters plans have exactly 3 run days (Sun/Tue/Thu) — no easy fillers.
   // Volume must be distributed across all three rather than the standard 5-run percentages.
-  const is3RunMasters = isMasters && getRunsPerWeek(targetKm, true) === 3;
+  const is3RunMasters = isMasters;
 
   const days: Date[] = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(startDate);
@@ -1188,6 +1366,7 @@ export function hudsonPlanWeek(
   const monOff = dow(1);
   const tueOff = dow(2);
   const wedOff = dow(3);
+  const thuOff = dow(4);
   const satOff = dow(6);
   const friOff = dow(5);
 
@@ -1295,23 +1474,38 @@ export function hudsonPlanWeek(
         );
       }
     }
+  } else if (isMasters) {
+    const mastersFallbacks = [
+      { slot: tueOff, km: hard1Km },
+      { slot: thuOff, km: hard2Km },
+    ];
+    for (const fallback of mastersFallbacks) {
+      if (availSet.has(fallback.slot) && plan[fallback.slot] === null) {
+        plan[fallback.slot] = hudsonCreateSession(
+          days[fallback.slot], 'Easy', 'E', fallback.km, vdot, 'easy',
+          `${fallback.km.toFixed(1)}km easy recovery substitute — quality skipped by fatigue/readiness gate`,
+        );
+      }
+    }
   }
 
-  // Hill sprints follow an easy run. On 4-day plans Monday is dropped, so
-  // the sprint session moves to Wednesday after Tuesday/Friday hard slots.
-  const hillFallback = isFourDaySkeleton
-    ? [wedOff, ...availIdx.filter(i => i !== longSlot && i !== tueOff && i !== friOff)]
-    : [monOff, wedOff, ...availIdx.filter(i => i !== longSlot && i !== tueOff && i !== friOff)];
-  hillSlot = firstFree(isFourDaySkeleton ? wedOff : monOff, hillFallback);
-  if (hillSlot !== -1 && plan[hillSlot] === null) {
-    plan[hillSlot] = hudsonCreateSession(
-      days[hillSlot], 'Easy', 'E', hillsKm, vdot, 'hillSprint',
-      hudsonNotes(phase.type, 'hills', hillsKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
-    );
+  if (!isMasters) {
+    // Hill sprints follow an easy run. On 4-day plans Monday is dropped, so
+    // the sprint session moves to Wednesday after Tuesday/Friday hard slots.
+    const hillFallback = isFourDaySkeleton
+      ? [wedOff, ...availIdx.filter(i => i !== longSlot && i !== tueOff && i !== friOff)]
+      : [monOff, wedOff, ...availIdx.filter(i => i !== longSlot && i !== tueOff && i !== friOff)];
+    hillSlot = firstFree(isFourDaySkeleton ? wedOff : monOff, hillFallback);
+    if (hillSlot !== -1 && plan[hillSlot] === null) {
+      plan[hillSlot] = hudsonCreateSession(
+        days[hillSlot], 'Easy', 'E', hillsKm, vdot, 'hillSprint',
+        hudsonNotes(phase.type, 'hills', hillsKm, weekInPeriod, periodLength, weekNumber, raceDistance, planLevel, isSharpPeak, isMasters),
+      );
+    }
   }
 
   // ── Moderate run (Wednesday, Fundamental/Sharpening only — Step 3) ──
-  if (!isRecovery && !isRaceWeek && phase.type !== 'Introductory') {
+  if (!isMasters && !isRecovery && !isRaceWeek && phase.type !== 'Introductory') {
     if (availSet.has(wedOff) && plan[wedOff] === null) {
       plan[wedOff] = hudsonCreateSession(
         days[wedOff], 'Easy', 'E', modKm, vdot, 'progression',
@@ -1339,7 +1533,9 @@ export function hudsonPlanWeek(
 
   // ── Rest/XTrain for unavailable days ──
   // Masters: template-designated off-days become cross-training (not full rest)
-  const templateRunDays = getTemplateRunDays(getRunsPerWeek(targetKm, isMasters), isMasters);
+  const templateRunDays = isMasters
+    ? getTemplateRunDays(3, true)
+    : getTemplateRunDays(getRunsPerWeek(targetKm, false), false);
   const templateOffsetSet = new Set(templateRunDays.map(d => (d - startDate.getDay() + 7) % 7));
 
   const finalWeek: DayPlan[] = plan.map((p, i) => {

@@ -11,6 +11,7 @@ import { useDeviceStore, PlanConfig } from '../store/useDeviceStore';
 import {
   resolvePlanEntry,
   HudsonRaceDistance,
+  HUDSON_MASTERS_PLAN_DURATION,
 } from '../../../../packages/shared/planner';
 
 type TargetRouteParams = {
@@ -42,8 +43,9 @@ function distanceToHudsonRaceDistance(km: number): HudsonRaceDistance {
   return 'marathon';
 }
 
-function planLabelFromDistance(km: number, level?: string): string {
+function planLabelFromDistance(km: number, level?: string, isMasters = false): string {
   const dist = km <= 6 ? '5K' : km <= 12 ? '10K' : km <= 25 ? 'Half-Marathon' : 'Marathon';
+  if (isMasters && (dist === '10K' || dist === 'Marathon')) return `Masters ${dist}`;
   const lvl = level === 'competitive' ? 'Level 2'
     : (level === 'highlyCompetitive' || level === 'elite') ? 'Level 3'
     : 'Level 1';
@@ -55,13 +57,16 @@ export default function TargetScreen() {
   const route = useRoute<RouteProp<TargetRouteParams, 'Target'>>();
   const existingTarget: TrainingTarget | null = route.params?.target || null;
   const routePlanConfig = route.params?.planConfig || null;
-  const { setPlanConfig, planConfig: storedPlanConfig, athleteProfile } = useDeviceStore();
+  const { setPlanConfig, setTarget: setStoredTarget, planConfig: storedPlanConfig, athleteProfile } = useDeviceStore();
 
   const planConfig = routePlanConfig || storedPlanConfig;
 
   // masters/youth have fixed schedules — hide day selector
   const isFixedSchedule =
     (athleteProfile?.ageCategory === 'masters' || athleteProfile?.ageCategory === 'youth') &&
+    athleteProfile?.ageLevelMode === 'age';
+  const isMastersPlan =
+    athleteProfile?.ageCategory === 'masters' &&
     athleteProfile?.ageLevelMode === 'age';
 
   const [daysConfigured, setDaysConfigured] = useState<number>(
@@ -136,13 +141,14 @@ export default function TargetScreen() {
       freeDays: planConfig?.freeDays ?? ['wed', 'sat'],
       weeklyTargetKm: planConfig?.weeklyTargetKm ?? 30,
       longRunTargetKm: planConfig?.longRunTargetKm ?? 12,
-      sessionsPerWeek: daysConfigured,
+      sessionsPerWeek: isMastersPlan ? 3 : daysConfigured,
       daysConfigured: isFixedSchedule ? null : daysConfigured,
       entryMode,
       entryWeekIndex,
-      referencePlanLabel: planLabelFromDistance(dist, athleteProfile?.runnerLevel),
+      referencePlanLabel: planLabelFromDistance(dist, athleteProfile?.runnerLevel, isMastersPlan),
     };
     setPlanConfig(newConfig);
+    setStoredTarget(target);
     navigation.navigate('Plan', { target, refresh: true });
   }
 
@@ -160,7 +166,8 @@ export default function TargetScreen() {
     }
 
     const hudsonDist = distanceToHudsonRaceDistance(dist);
-    const entry = resolvePlanEntry(hudsonDist, targetDate, new Date());
+    const mastersDuration = isMastersPlan ? HUDSON_MASTERS_PLAN_DURATION[hudsonDist] : undefined;
+    const entry = resolvePlanEntry(hudsonDist, targetDate, new Date(), mastersDuration);
 
     if (entry.status === 'error') {
       Alert.alert('Not enough time', entry.errorMessage ?? 'Choose a later race date or a shorter distance.');
@@ -171,7 +178,7 @@ export default function TargetScreen() {
       const { weeksAvailable, planDuration, entryWeekIndex, weeksToSkip } = entry;
       Alert.alert(
         'Your race is in ' + weeksAvailable + ' weeks',
-        `The standard ${hudsonDist} plan is ${planDuration} weeks.\n\n` +
+        `The standard ${planLabelFromDistance(dist, athleteProfile?.runnerLevel, isMastersPlan)} plan is ${planDuration} weeks.\n\n` +
         `Option A — Start from Week 1\nComplete ${weeksAvailable} of ${planDuration} weeks (weeks ${weeksToSkip + 1}–${planDuration}).\nRecommended if you have low current fitness.\n\n` +
         `Option B — Skip to Week ${entryWeekIndex}\nStart at a higher intensity matching your current fitness.\nRecommended if you have base fitness.`,
         [

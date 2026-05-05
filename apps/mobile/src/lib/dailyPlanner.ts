@@ -21,6 +21,7 @@ import {
   HudsonRaceDistance,
   CANONICAL_TRAINING_DAYS,
   HUDSON_PLAN_DURATION,
+  HUDSON_MASTERS_PLAN_DURATION,
   HUDSON_VOLUME_BANDS,
   getStoredTrainingPhase,
   StoredTrainingPhase,
@@ -195,11 +196,12 @@ export const generateSmartPlan = (
   const todayReadiness = readinessScores[todayStr] ?? 100;
 
   // Hudson branch: when runnerLevel is set, use §4 volume bands + §5 period structure
-  const runnerLevel = athlete.runnerLevel;
   const isMasters = athlete.isMasters ?? false;
+  const runnerLevel = athlete.runnerLevel ?? (isMasters ? 'lowKey' : undefined);
   const hudsonRaceDistance = distanceToHudsonRaceDistance(target.distanceKm || 10);
+  const fixedMastersWeeks = isMasters ? HUDSON_MASTERS_PLAN_DURATION[hudsonRaceDistance] : undefined;
   const hudsonSeason: HudsonSeason | null = runnerLevel
-    ? hudsonPlanSeason(aRaceDate, startDate, hudsonRaceDistance)
+    ? hudsonPlanSeason(aRaceDate, startDate, hudsonRaceDistance, fixedMastersWeeks)
     : null;
 
   const season = planSeason(aRaceDate, startDate); // Daniels fallback
@@ -347,7 +349,7 @@ export const generateSmartPlan = (
     // Feature 1: canonical day mapping — use user's daysConfigured (4–7) if set;
     // otherwise fall back to template-derived days from volume.
     const hudsonRunDays = runnerLevel
-      ? (canonicalDays ?? getTemplateRunDays(getRunsPerWeek(weeklyKm, isMasters), isMasters))
+      ? (isMasters ? getTemplateRunDays(3, true) : (canonicalDays ?? getTemplateRunDays(getRunsPerWeek(weeklyKm, false), false)))
       : freeDayIndices;
 
     // Feature 2: volume redistribution — override weeklyKm distribution if daysConfigured
@@ -609,8 +611,10 @@ const HUDSON_TITLES: Record<string, string> = {
   hillReps:          'Hill Repetitions',
   uphillProgression: 'Uphill Progression',
   threshold:         'Threshold Run',
+  ladder:            'Ladder Workout',
   progression:       'Progression Run',
   specEndIntervals:  'Specific-Endurance Intervals',
+  speedIntervals:    'Speed Intervals',
   strides:           'Easy + Strides',
   long:              'Long Run',
   easy:              'Easy Run',

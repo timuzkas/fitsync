@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Alert, TextInput, Switch, StyleSheet as RN,
+  Alert, TextInput, Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,25 +20,14 @@ export interface AthleteProfile {
   country?: string;
 }
 
-const DAYS = [
-  { id: 'mon', label: 'Mo' },
-  { id: 'tue', label: 'Tu' },
-  { id: 'wed', label: 'We' },
-  { id: 'thu', label: 'Th' },
-  { id: 'fri', label: 'Fr' },
-  { id: 'sat', label: 'Sa' },
-  { id: 'sun', label: 'Su' },
-];
-
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
   const {
     deviceId, deviceSecret, athleteProfile, setAthleteProfile,
-    planConfig, setPlanConfig, target,
+    target,
     wellnessCalibrationHours, setWellnessCalibrationHours,
   } = useDeviceStore();
 
-  const [freeDays, setFreeDays] = useState<string[]>(planConfig?.freeDays || ['mon', 'wed', 'fri']);
   const [winStart, setWinStart] = useState(String(wellnessCalibrationHours?.start ?? 6));
   const [winEnd, setWinEnd] = useState(String(wellnessCalibrationHours?.end ?? 11));
   const [maxHR, setMaxHR] = useState(athleteProfile?.maxHR?.toString() || '');
@@ -49,8 +38,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     if (athleteProfile?.maxHR) setMaxHR(athleteProfile.maxHR.toString());
     if (athleteProfile?.restHR) setRestHR(athleteProfile.restHR.toString());
-    if (planConfig?.freeDays) setFreeDays(planConfig.freeDays);
-  }, [athleteProfile, planConfig]);
+  }, [athleteProfile]);
 
   useEffect(() => {
     if (!deviceId || !deviceSecret) return;
@@ -72,16 +60,6 @@ export default function SettingsScreen() {
       setIncludeHevyInLoad(!value);
       Alert.alert('Error', 'Failed to save setting');
     }
-  }
-
-  function toggleDay(dayId: string) {
-    setFreeDays(prev =>
-      prev.includes(dayId)
-        ? prev.filter(d => d !== dayId)
-        : [...prev, dayId].sort((a, b) =>
-            DAYS.findIndex(d => d.id === a) - DAYS.findIndex(d => d.id === b)
-          )
-    );
   }
 
   function saveAll() {
@@ -109,12 +87,6 @@ export default function SettingsScreen() {
       return;
     }
 
-    // Validate training days
-    if (freeDays.length === 0) {
-      Alert.alert('Select Training Days', 'Pick at least one day');
-      return;
-    }
-
     // Save
     setAthleteProfile({
       ...athleteProfile,
@@ -122,10 +94,6 @@ export default function SettingsScreen() {
       restHR: restHR ? parseInt(restHR) : undefined,
     });
     setWellnessCalibrationHours({ start: s, end: e });
-    setPlanConfig({
-      ...(planConfig || { weeklyTargetKm: 30, longRunTargetKm: 12, sessionsPerWeek: 3 }),
-      freeDays,
-    });
 
     navigation.goBack();
   }
@@ -211,36 +179,6 @@ export default function SettingsScreen() {
         {/* ── TRAINING ── */}
         <Text style={styles.sectionLabel}>TRAINING</Text>
         <View style={styles.group}>
-
-          {/* Training days */}
-          <View style={[styles.row, { alignItems: 'flex-start', paddingVertical: tokens.space.md }]}>
-            <View style={[styles.rowIconWrap, { backgroundColor: tokens.color.elevated, marginTop: 2 }]}>
-              <Ionicons name="calendar-outline" size={16} color={tokens.color.textSecondary} />
-            </View>
-            <View style={styles.rowBody}>
-              <Text style={styles.rowTitle}>Training Days</Text>
-              <View style={styles.daysRow}>
-                {DAYS.map(day => {
-                  const active = freeDays.includes(day.id);
-                  return (
-                    <TouchableOpacity
-                      key={day.id}
-                      style={[styles.dayBtn, active && styles.dayBtnActive]}
-                      onPress={() => toggleDay(day.id)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.dayBtnText, active && styles.dayBtnTextActive]}>
-                        {day.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text style={styles.daysHint}>{freeDays.length} day{freeDays.length !== 1 ? 's' : ''} selected</Text>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
 
           {/* Max HR */}
           <View style={styles.row}>
@@ -373,7 +311,7 @@ export default function SettingsScreen() {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.saveBtn, freeDays.length === 0 && { opacity: 0.4 }]}
+          style={styles.saveBtn}
           onPress={saveAll}
           activeOpacity={0.85}
         >
@@ -510,41 +448,6 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.sm,
     color: tokens.color.textTertiary,
     fontWeight: '600',
-  },
-
-  /* Training days */
-  daysRow: {
-    flexDirection: 'row',
-    gap: 5,
-    marginTop: tokens.space.sm,
-  },
-  dayBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: tokens.radius.full,
-    backgroundColor: tokens.color.elevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-  },
-  dayBtnActive: {
-    backgroundColor: tokens.color.primaryMuted,
-    borderColor: tokens.color.primary,
-  },
-  dayBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: tokens.color.textMuted,
-  },
-  dayBtnTextActive: {
-    color: tokens.color.primary,
-  },
-  daysHint: {
-    fontSize: tokens.font.xs,
-    color: tokens.color.textTertiary,
-    marginTop: 6,
-    fontWeight: '500',
   },
 
   /* Danger */
