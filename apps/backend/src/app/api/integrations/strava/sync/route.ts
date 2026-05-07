@@ -17,7 +17,7 @@ import {
   suggestRpeFromHrZone,
 } from '../../../../../../../../packages/shared/training';
 
-import { parseHevyLog } from '@/lib/parsers/hevy';
+import { isHevyLog, parseHevyLog } from '@/lib/parsers/hevy';
 
 export async function POST(request: NextRequest) {
   const deviceId = request.headers.get('x-device-id');
@@ -67,7 +67,9 @@ export async function POST(request: NextRequest) {
     });
     type ExistingEntry = { externalId: string; deviceInstallationId: string };
     const existingMap = new Map<string, ExistingEntry>(
-      existingWorkouts.map((w: ExistingEntry) => [w.externalId, w])
+      existingWorkouts
+        .filter((w): w is ExistingEntry => typeof w.externalId === 'string')
+        .map((w) => [w.externalId, w])
     );
 
     // 5. Parallelize processing of activities
@@ -85,10 +87,8 @@ export async function POST(request: NextRequest) {
       const externalId = `strava-${summaryActivity.id}`;
       const existing = existingMap.get(externalId);
       
-      // Skip if already synced under this device
-      if (existing && existing.deviceInstallationId === installation.id) {
-        return { status: 'skipped' };
-      }
+      // Existing same-device records still fetch details and upsert, so classifier/parser
+      // improvements can repair older imports without deleting history.
       
       // If exists under a different device, create a new record with a unique externalId
       let useExternalId = externalId;
@@ -97,11 +97,15 @@ export async function POST(request: NextRequest) {
         console.log('[SYNC] Workout exists under different device, using new ID:', useExternalId);
       }
 
-      const workoutType = mapStravaToWorkoutType(summaryActivity.type);
+      let workoutType = mapStravaToWorkoutType(summaryActivity.type);
       let candidateVdot: number | undefined;
 
       try {
         const activity = await fetchDetailedStravaActivity(dataSource.accessToken!, summaryActivity.id);
+        const hevyResult = parseHevyLog(activity.description || "");
+        if (hevyResult || isHevyLog(activity.description)) {
+          workoutType = 'strength';
+        }
         
         let loadCalc;
         let sourceDetail: any = null;
@@ -124,10 +128,7 @@ export async function POST(request: NextRequest) {
           // No HR data - default based on activity type
           rpe = workoutType === 'run' ? 5 : 5;
         }
-        let hevyResult = null;
-
         if (workoutType === 'strength') {
-          hevyResult = parseHevyLog(activity.description || "");
           const hevyData = hevyResult?.volume;
           rpe = 5; // Default for strength per spec
 
@@ -187,6 +188,7 @@ export async function POST(request: NextRequest) {
         const workout = await prisma.workout.upsert({
           where: { externalId: useExternalId },
           update: {
+            type: workoutType,
             title: activity.name,
             durationSec: activity.elapsed_time,
             calories: activity.calories,

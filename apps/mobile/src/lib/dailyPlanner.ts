@@ -35,6 +35,11 @@ import {
   classifyGoal,
   getNextVdotMilestone,
 } from '../../../../packages/shared/training';
+import {
+  correctSession,
+  SessionType,
+  TrainingState,
+} from '../../../../packages/shared/adaptiveCorrection';
 import { calculateMuscularRisks } from '../../../backend/src/lib/load';
 import { TrainingTarget } from '../types';
 import { tokens } from '../tokens';
@@ -57,6 +62,23 @@ export interface Athlete {
   isMasters?: boolean;       // true when ageCategory === 'masters' — enables XTrain off-days, 3-run minimum
 }
 
+export type PlanAdjustmentChoice = 'standard' | 'downgraded';
+
+export interface PlanSuggestion {
+  type: DailyPlan['type'];
+  zone?: DailyPlan['zone'];
+  vdotZone?: string;
+  title: string;
+  description: string;
+  targetDistanceKm: number;
+  distanceKm: number;
+  targetDurationMin: number;
+  durationMin: number;
+  targetPaceSecPerKm: number;
+  intensity: DailyPlan['intensity'];
+  rpe: number;
+}
+
 export interface DailyPlan extends SharedDayPlan {
   title: string;
   description: string;
@@ -77,6 +99,13 @@ export interface DailyPlan extends SharedDayPlan {
   trainingPhase?: StoredTrainingPhase;
   /** Feature 2: true if volume was redistributed due to daysConfigured != reference default. */
   recalculated?: boolean;
+  adjustmentOptions?: {
+    standard: PlanSuggestion;
+    downgraded: PlanSuggestion;
+    reason?: string;
+  };
+  selectedAdjustment?: PlanAdjustmentChoice;
+  performedAdjustment?: PlanAdjustmentChoice;
 }
 
 export interface PlanConfig {
@@ -144,9 +173,10 @@ export const generateSmartPlan = (
   config: PlanConfig,
   readinessScores: Record<string, number> = {},
   temps: Record<string, number> = {},
-  plannedRaces: any[] = []
+  plannedRaces: any[] = [],
+  startDateOverride?: Date | string
 ): { dailyPlan: DailyPlan[]; weeklyStats: any[] } => {
-  const startDate = new Date();
+  const startDate = startDateOverride ? new Date(startDateOverride) : new Date();
   startDate.setHours(0, 0, 0, 0);
 
   const aRaceDate = config.aRaceDate ? new Date(config.aRaceDate) : new Date(target.targetDate);
@@ -507,7 +537,7 @@ export const adaptPlanAfterNewWorkout = (
   athlete: any,
   readinessScores: Record<string, number>,
   allRecentWorkouts: any[] = []
-) => {
+): DailyPlan[] => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayStr = today.toISOString().split('T')[0];
@@ -520,6 +550,50 @@ export const adaptPlanAfterNewWorkout = (
     })),
     today
   );
+
+  const recentDailyLoads = allRecentWorkouts
+    .filter(w => w.startedAt)
+    .map(w => ({
+      date: new Date(w.startedAt),
+      load: (w.rpe || 5) * (((w.durationSec || 0) / 60) || w.durationMin || 0),
+    }));
+  const lastRestDate = findLastRestDate(recentDailyLoads, today);
+  const daysSinceLastRest = lastRestDate
+    ? Math.max(0, Math.round((today.getTime() - lastRestDate.getTime()) / (1000 * 60 * 60 * 24)))
+    : 7;
+  const currentAcuteLoad = recentDailyLoads
+    .filter(w => today.getTime() - w.date.getTime() <= 7 * 24 * 60 * 60 * 1000)
+    .reduce((sum, w) => sum + w.load, 0);
+  const currentChronicLoad = recentDailyLoads
+    .filter(w => today.getTime() - w.date.getTime() <= 28 * 24 * 60 * 60 * 1000)
+    .reduce((sum, w) => sum + w.load, 0) / 4;
+  const liveAcwr = currentChronicLoad > 0 ? currentAcuteLoad / currentChronicLoad : 1;
+  const liveTsb = currentChronicLoad - currentAcuteLoad;
+
+  const toPlanSuggestion = (plan: DailyPlan): PlanSuggestion => ({
+    type: plan.type,
+    zone: plan.zone,
+    vdotZone: plan.vdotZone,
+    title: plan.title,
+    description: plan.description,
+    targetDistanceKm: plan.targetDistanceKm,
+    distanceKm: plan.distanceKm,
+    targetDurationMin: plan.targetDurationMin,
+    durationMin: plan.durationMin,
+    targetPaceSecPerKm: plan.targetPaceSecPerKm,
+    intensity: plan.intensity,
+    rpe: plan.rpe,
+  });
+
+  const withAdjustmentOptions = (standard: DailyPlan, downgraded: DailyPlan, reason?: string): DailyPlan => ({
+    ...downgraded,
+    adjustmentOptions: {
+      standard: toPlanSuggestion(standard),
+      downgraded: toPlanSuggestion(downgraded),
+      reason,
+    },
+    selectedAdjustment: 'downgraded',
+  });
 
   return basePlan.map(day => {
     const dayDate = new Date(day.date);
@@ -544,24 +618,53 @@ export const adaptPlanAfterNewWorkout = (
       }
     }
 
-    // Auto-downgrade quality if fatigue gate fails (LMR > 68 or readiness < 55)
+    // Constraint-based adaptive correction for today's planned session.
     const finalLegRiskLevel = Math.max(muscularRisk.legMuscularRisk, muscularRisk.totalBodyFatigue * 0.7);
     const readiness = readinessScores[todayStr] ?? 100;
-    if (isToday && (finalLegRiskLevel > 68 || readiness < 55) && day.type === 'Quality') {
-      const paceSec = getZonePace(athlete.vdot || 40, 'E');
-      const reason = finalLegRiskLevel > 68
-        ? `high Leg Muscular Risk (${Math.round(finalLegRiskLevel)}%)`
-        : `low readiness (${Math.round(readiness)}%)`;
-      return {
-        ...day,
-        type: 'Easy' as any,
-        zone: 'E' as any,
-        title: 'Easy Run (Recovery)',
-        description: `Downgraded from quality — ${reason}.`,
-        targetPaceSecPerKm: paceSec,
-        targetDurationMin: Math.round((day.targetDistanceKm * paceSec) / 60),
-        intensity: 'low' as any
-      };
+    if (isToday && day.type !== 'Rest' && day.type !== 'Race') {
+      const correction = correctSession(
+        {
+          sessionType: dailyPlanToSessionType(day),
+          plannedLoadAu: day.load || (day.targetDurationMin || day.durationMin || 0) * (day.rpe || 5),
+          durationMin: day.targetDurationMin || day.durationMin || 0,
+          reps: day.reps,
+          totalKm: day.targetDistanceKm || day.distanceKm,
+          intensityPct: dailyPlanIntensityPct(day),
+          includesPlyos: day.hudsonWorkoutType === 'hillSprint' || day.hudsonWorkoutType === 'strides',
+          includesEccentrics: day.hudsonWorkoutType === 'hillReps' || day.hudsonWorkoutType === 'uphillProgression',
+        },
+        {
+          readiness,
+          legFreshness: Math.max(0, 100 - finalLegRiskLevel),
+          acwr: Math.round(liveAcwr * 100) / 100,
+          soreness: inferSoreness(lastWorkout, finalLegRiskLevel),
+          wellnessZscore: readiness >= 70 ? 0 : readiness >= 55 ? -0.7 : -1.6,
+          tsb: liveTsb,
+          weeklyDelta: 0,
+          daysSinceLastRest,
+        }
+      );
+
+      if (correction.modifications.length > 0 || correction.state !== 'green') {
+        const correctedType = sessionTypeToDailyType(correction.sessionType);
+        const correctedKm = correction.totalKm ?? day.targetDistanceKm;
+        const correctedDuration = correction.durationMin;
+        const paceSec = correctedPaceForSession(correction.sessionType, athlete.vdot || 40, day.targetPaceSecPerKm);
+        const correctedDay: DailyPlan = {
+          ...day,
+          type: correctedType as any,
+          zone: sessionTypeToZone(correction.sessionType, day.zone) as any,
+          title: correctedTitle(correction.state, correction.sessionType, day.title),
+          description: correction.modifications[0]?.reason || correction.stateSummary,
+          targetDistanceKm: correctedKm,
+          distanceKm: correctedKm,
+          targetDurationMin: correctedDuration,
+          durationMin: correctedDuration,
+          targetPaceSecPerKm: paceSec,
+          intensity: trainingStateToIntensity(correction.state, correctedType) as any
+        };
+        return withAdjustmentOptions(day, correctedDay, correction.modifications[0]?.reason || correction.stateSummary);
+      }
     }
 
     // Readiness trimming
@@ -570,7 +673,7 @@ export const adaptPlanAfterNewWorkout = (
       if (day.type === 'Quality') {
         if (readiness < 40) {
           const paceSec = getZonePace(athlete.vdot || 40, 'E');
-          return {
+          const downgradedDay: DailyPlan = {
             ...day,
             type: 'Easy' as any,
             zone: 'E' as any,
@@ -580,12 +683,24 @@ export const adaptPlanAfterNewWorkout = (
             targetDurationMin: Math.round((day.targetDistanceKm * paceSec) / 60),
             intensity: 'low' as any,
           };
+          return withAdjustmentOptions(day, downgradedDay, downgradedDay.description);
         }
         return {
           ...day,
           title: `⚠️ ${day.title} (Low Readiness)`,
           description: `Readiness ${readiness.toFixed(0)}% — consider reducing intensity.`,
           intensity: 'high' as any,
+          adjustmentOptions: {
+            standard: toPlanSuggestion(day),
+            downgraded: toPlanSuggestion({
+              ...day,
+              title: `${day.title} (Low Readiness)`,
+              description: `Readiness ${readiness.toFixed(0)}%: consider reducing intensity.`,
+              intensity: 'high' as any,
+            }),
+            reason: `Readiness ${readiness.toFixed(0)}%: consider reducing intensity.`,
+          },
+          selectedAdjustment: 'downgraded',
         };
       }
 
@@ -596,6 +711,18 @@ export const adaptPlanAfterNewWorkout = (
           title: `${day.title} (Adjusted)`,
           distanceKm: Math.round(day.distanceKm * reduction * 10) / 10,
           durationMin: Math.round(day.durationMin * reduction),
+          adjustmentOptions: {
+            standard: toPlanSuggestion(day),
+            downgraded: toPlanSuggestion({
+              ...day,
+              title: `${day.title} (Adjusted)`,
+              distanceKm: Math.round(day.distanceKm * reduction * 10) / 10,
+              durationMin: Math.round(day.durationMin * reduction),
+              description: `Volume trimmed: readiness ${readiness.toFixed(0)}%.`,
+            }),
+            reason: `Volume trimmed: readiness ${readiness.toFixed(0)}%.`,
+          },
+          selectedAdjustment: 'downgraded',
           description: `Volume trimmed — readiness ${readiness.toFixed(0)}%.`,
         };
       }
@@ -664,6 +791,108 @@ function getIntensity(dp: SharedDayPlan): DailyPlan['intensity'] {
   if (dp.hudsonWorkoutType === 'hardLongRun' || dp.hudsonWorkoutType === 'marathonPaceRun') return 'high';
   if (dp.type === 'Long') return 'medium';
   return 'low';
+}
+
+function dailyPlanToSessionType(day: DailyPlan): SessionType {
+  if (day.hudsonWorkoutType === 'hillReps' || day.hudsonWorkoutType === 'uphillProgression') return 'hill_reps';
+  if (day.hudsonWorkoutType === 'progression' || day.hudsonWorkoutType === 'hardLongRun') return 'progression_run';
+  if (day.hudsonWorkoutType === 'xTrain') return 'cross_train';
+  if (day.type === 'Long') return 'long_run';
+  if (day.type === 'Easy') return 'easy_run';
+  if (day.type === 'Quality') {
+    if (day.zone === 'T') return 'tempo';
+    if (day.zone === 'R') return 'interval_short';
+    return 'interval_long';
+  }
+  return 'recovery_run';
+}
+
+function sessionTypeToDailyType(sessionType: SessionType): DailyPlan['type'] {
+  switch (sessionType) {
+    case 'rest':
+      return 'Rest' as any;
+    case 'long_run':
+      return 'Long' as any;
+    case 'tempo':
+    case 'interval_short':
+    case 'interval_long':
+    case 'hill_reps':
+    case 'progression_run':
+      return 'Quality' as any;
+    default:
+      return 'Easy' as any;
+  }
+}
+
+function sessionTypeToZone(sessionType: SessionType, fallback?: string) {
+  switch (sessionType) {
+    case 'tempo':
+      return 'T';
+    case 'interval_short':
+      return 'R';
+    case 'interval_long':
+      return 'I';
+    case 'easy_run':
+    case 'recovery_run':
+    case 'long_run':
+    case 'cross_train':
+    case 'rest':
+      return 'E';
+    default:
+      return fallback || 'E';
+  }
+}
+
+function correctedPaceForSession(sessionType: SessionType, vdot: number, fallback: number): number {
+  const zone = sessionTypeToZone(sessionType, undefined);
+  if (zone === 'T' || zone === 'I' || zone === 'R' || zone === 'E') return getZonePace(vdot, zone);
+  return fallback || getZonePace(vdot, 'E');
+}
+
+function dailyPlanIntensityPct(day: DailyPlan): number {
+  if (day.zone === 'R') return 95;
+  if (day.zone === 'I') return 92;
+  if (day.zone === 'T') return 88;
+  if (day.type === 'Long') return 75;
+  return 70;
+}
+
+function correctedTitle(state: TrainingState, sessionType: SessionType, fallback: string): string {
+  if (state === 'green') return fallback;
+  if (sessionType === 'rest') return 'Rest Day (Adjusted)';
+  if (sessionType === 'recovery_run') return 'Recovery Run (Adjusted)';
+  if (sessionType === 'easy_run') return 'Easy Run (Adjusted)';
+  if (sessionType === 'cross_train') return 'Cross-Training (Adjusted)';
+  return `${fallback} (Adjusted)`;
+}
+
+function trainingStateToIntensity(state: TrainingState, type: DailyPlan['type']): DailyPlan['intensity'] {
+  if (type === 'Rest') return 'rest';
+  if (state === 'red') return 'low';
+  if (state === 'yellow' && type !== 'Quality') return 'low';
+  if (type === 'Quality') return 'high';
+  if (type === 'Long') return 'medium';
+  return 'low';
+}
+
+function inferSoreness(lastWorkout: any, legRisk: number): number {
+  const explicit = Number(lastWorkout?.soreness ?? lastWorkout?.sorenessScore);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.max(0, Math.min(10, explicit));
+  if (legRisk >= 75) return 8;
+  if (legRisk >= 60) return 6;
+  if (legRisk >= 40) return 4;
+  return 2;
+}
+
+function findLastRestDate(loads: Array<{ date: Date; load: number }>, today: Date): Date | null {
+  for (let daysAgo = 1; daysAgo <= 14; daysAgo++) {
+    const day = new Date(today);
+    day.setDate(today.getDate() - daysAgo);
+    const dayKey = day.toLocaleDateString('en-CA');
+    const hadWorkout = loads.some(w => w.date.toLocaleDateString('en-CA') === dayKey && w.load > 0);
+    if (!hadWorkout) return day;
+  }
+  return null;
 }
 
 export interface LoadMetrics {

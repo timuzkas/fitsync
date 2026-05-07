@@ -233,7 +233,7 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.rowBody}>
               <Text style={styles.rowTitle}>Training Engine</Text>
-              <Text style={styles.rowSub}>VDOT, ACWR, Foster weights</Text>
+              <Text style={styles.rowSub}>VDOT and runner level</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={tokens.color.textTertiary} />
           </TouchableOpacity>
@@ -246,7 +246,9 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.rowBody}>
               <Text style={styles.rowTitle}>Hevy in Training Load</Text>
-              <Text style={styles.rowSub}>{includeHevyInLoad ? 'Counts toward 7d / 28d load' : 'Excluded from load'}</Text>
+              <Text style={styles.rowSub}>
+                {includeHevyInLoad ? 'Counts toward AU load' : 'Movement only for Leg / Body'}
+              </Text>
             </View>
             <Switch
               value={includeHevyInLoad}

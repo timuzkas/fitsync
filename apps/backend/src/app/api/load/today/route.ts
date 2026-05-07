@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import {
   calc7dLoad, calc28dLoad, formatLoad,
-  calculateReadinessV2, calculateMuscularRisks, DEFAULT_CONFIG, LoadConfig
+  calculateReadinessV2, DEFAULT_CONFIG, LoadConfig
 } from '@/lib/load';
-import { calculateSessionMSL } from '@/lib/parsers/hevy';
+import { acwrEwma, exerciseFatigueBreakdown, StrengthSession } from '../../../../../../../packages/shared/trainingLoad';
 
 export async function GET(request: Request) {
   const deviceId = String(request.headers.get('x-device-id') || '');
@@ -21,6 +21,7 @@ export async function GET(request: Request) {
     }
 
     const config = (installation.config as unknown as LoadConfig) || DEFAULT_CONFIG;
+    const runnerLevel = String(request.headers.get('x-runner-level') || (config as any).runnerLevel || 'competitive');
 
     const now = new Date();
     const cutoff28 = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
@@ -43,6 +44,26 @@ export async function GET(request: Request) {
 
     const load7d = formatLoad(calc7dLoad(loadWorkouts, now, config));
     const load28d = formatLoad(calc28dLoad(loadWorkouts, now, config));
+    const dailyLoads = Array.from({ length: 28 }, () => 0);
+    const startDay = new Date(now);
+    startDay.setHours(0, 0, 0, 0);
+    startDay.setDate(startDay.getDate() - 27);
+    for (const w of loadWorkouts as any[]) {
+      const workoutDay = new Date(w.startedAt);
+      workoutDay.setHours(0, 0, 0, 0);
+      const dayIndex = Math.floor((workoutDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24));
+      if (dayIndex < 0 || dayIndex >= dailyLoads.length) continue;
+      const loadScore = w.loadScore
+        ? Number(w.loadScore.cardio || 0)
+          + Number(w.loadScore.legs || 0)
+          + Number(w.loadScore.upper || 0)
+          + Number(w.loadScore.core || 0)
+          + Number(w.loadScore.systemic || 0)
+        : (w.rpe || 5) * (w.durationSec / 60);
+      dailyLoads[dayIndex] += loadScore;
+    }
+    const acwrSeries = acwrEwma(dailyLoads);
+    const acwr = Math.round((acwrSeries[acwrSeries.length - 1] || 1) * 100) / 100;
 
     const last7DaysSessions = loadWorkouts
       .filter((w: any) => new Date(w.startedAt) >= cutoff7)
@@ -55,19 +76,30 @@ export async function GET(request: Request) {
     const readiness = calculateReadinessV2(last7DaysSessions, now, lastWorkoutDate);
 
     // §15 Leg Muscular Risk + Total Body Fatigue from Hevy strength sessions
-    const strengthSessions = workouts
+    let legMuscularRisk = 0;
+    let totalBodyFatigue = 0;
+    workouts
       .filter((w: any) => w.type === 'strength' && w.exercises?.length > 0 && new Date(w.startedAt) >= cutoff7)
-      .map((w: any) => {
-        const { legStress, systemicStress } = calculateSessionMSL(
-          w.exercises.map((ex: any) => ({
-            name: ex.name,
-            sets: (ex.sets as any[]).map((s: any) => ({ reps: s.reps || 0, weight: s.weight || 0, rpe: s.rpe })),
-          })),
-          w.durationSec / 60
-        );
-        return { legStress, totalStress: systemicStress, date: new Date(w.startedAt) };
+      .forEach((w: any) => {
+        const session: StrengthSession = {
+          durationMin: w.durationSec / 60,
+          sessionRpe: w.rpe || 7,
+          sets: w.exercises.flatMap((ex: any) =>
+            ((ex.sets as any[]) || []).map((s: any) => ({
+              name: ex.name,
+              reps: Number(s.reps) || 0,
+              weightKg: Number(s.weight) || 0,
+              rpe: Number(s.rpe) || w.rpe || 7,
+            }))
+          ),
+        };
+        const breakdown = exerciseFatigueBreakdown(session, runnerLevel);
+        const daysAgo = Math.floor((now.getTime() - new Date(w.startedAt).getTime()) / (1000 * 60 * 60 * 24));
+        legMuscularRisk += breakdown.legFatigue * Math.pow(0.62, daysAgo);
+        totalBodyFatigue += breakdown.totalBodyFatigue * Math.pow(0.68, daysAgo);
       });
-    const { legMuscularRisk, totalBodyFatigue } = calculateMuscularRisks(strengthSessions, now);
+    legMuscularRisk = Math.round(Math.min(100, legMuscularRisk));
+    totalBodyFatigue = Math.round(Math.min(100, totalBodyFatigue));
 
     const recentWorkouts = workouts.slice(0, 10).map((w: any) => ({
       id: w.id,
@@ -87,6 +119,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       readiness,
+      acwr,
       load7d,
       load28d,
       legMuscularRisk,

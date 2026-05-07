@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { calc7dLoad, formatLoad } from '@/lib/load';
+import { calc7dLoad, DEFAULT_CONFIG, formatLoad, LoadConfig } from '@/lib/load';
 
 export async function GET(request: Request) {
   const deviceId = request.headers.get('x-device-id');
@@ -15,6 +15,7 @@ export async function GET(request: Request) {
     if (!installation || installation.deviceSecret !== deviceSecret) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
+    const config = (installation.config as unknown as LoadConfig) || DEFAULT_CONFIG;
 
     const days = 28;
     const now = new Date();
@@ -33,7 +34,10 @@ export async function GET(request: Request) {
         include: { loadScore: true },
       });
 
-      const load = formatLoad(calc7dLoad(workouts, dayEnd));
+      const loadWorkouts = config.includeHevyInLoad !== false
+        ? workouts
+        : workouts.filter((w: any) => w.type !== 'strength');
+      const load = formatLoad(calc7dLoad(loadWorkouts, dayEnd, config));
       history.unshift({
         date: dayStart.toISOString().split('T')[0],
         cardio: load.cardio,

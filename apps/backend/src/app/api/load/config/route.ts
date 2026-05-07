@@ -37,12 +37,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const config = await request.json();
-    
-    // Basic validation
-    if (!config.halfLifeHours || !config.multipliers) {
-      return NextResponse.json({ error: 'Invalid config' }, { status: 400 });
-    }
+    const patch = await request.json();
+    const existingConfig = (installation.config as unknown as LoadConfig) || DEFAULT_CONFIG;
+    const config = {
+      ...DEFAULT_CONFIG,
+      ...existingConfig,
+      ...patch,
+    };
 
     await prisma.deviceInstallation.update({
       where: { id: installation.id },

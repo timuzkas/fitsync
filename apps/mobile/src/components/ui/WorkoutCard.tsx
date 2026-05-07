@@ -4,6 +4,7 @@ import {
   LayoutAnimation, Platform, UIManager,
 } from 'react-native';
 import { tokens } from '../../tokens';
+import { exerciseFatigueBreakdown, StrengthSession, TrainingFitnessLevel } from '../../../../../packages/shared/trainingLoad';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android') {
@@ -13,6 +14,7 @@ if (Platform.OS === 'android') {
 interface WorkoutCardProps {
   workout: any;
   onDelete?: (id: string) => void;
+  runnerLevel?: TrainingFitnessLevel | null;
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -43,21 +45,34 @@ function fmtDate(s: string) {
   return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
+function fmtPace(sec: number) {
+  if (!sec || !Number.isFinite(sec) || sec <= 0) return null;
+  const min = Math.floor(sec / 60);
+  const remSec = Math.round(sec % 60);
+  return `${min}:${remSec.toString().padStart(2, '0')}/km`;
+}
+
+export function WorkoutCard({ workout, onDelete, runnerLevel }: WorkoutCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const ls = workout?.loadScore;
+  const isStrength = workout?.type === 'strength';
+  const isRun = workout?.type === 'run';
   const sessionLoad = workout?.rpe && workout?.durationSec
     ? Math.round(workout.rpe * (workout.durationSec / 60))
     : null;
   const hasLoad = sessionLoad != null && sessionLoad > 0;
+  const strengthFatigue = isStrength ? getStrengthFatigue(workout, runnerLevel) : null;
   const typeColor = TYPE_COLORS[workout?.type] || tokens.color.textMuted;
   const hasDistance = workout?.distanceM != null && workout?.distanceM > 0;
 
   const paceSec = hasDistance ? workout.durationSec / (workout.distanceM / 1000) : 0;
-  const paceMin = Math.floor(paceSec / 60);
-  const paceRemSec = Math.round(paceSec % 60);
-  const paceStr = paceSec > 0 ? `${paceMin}:${paceRemSec.toString().padStart(2, '0')}/km` : null;
+  const paceStr = fmtPace(paceSec);
+  const elevationGainM = workout?.elevationGainM ?? workout?.elevationGain;
+  const elevationStr = isRun && elevationGainM != null && elevationGainM > 0
+    ? `${Math.round(elevationGainM)} m`
+    : null;
+  const gapPaceStr = isRun && workout?.gapPaceSec ? fmtPace(workout.gapPaceSec) : null;
+  const gapStr = gapPaceStr ? `GAP ${gapPaceStr}` : null;
 
   const handleToggle = () => {
     LayoutAnimation.configureNext({
@@ -90,6 +105,8 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
                     fmtDur(workout?.durationSec),
                     paceStr,
                     workout?.calories ? `${Math.round(workout.calories)} kcal` : null,
+                    elevationStr,
+                    gapStr,
                   ].filter(Boolean).join(' · ')}
                 </Text>
               </View>
@@ -119,27 +136,20 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
         <View style={styles.detailsPane}>
           {hasLoad && (
             <View style={styles.detailSection}>
-              <Text style={styles.sectionTitle}>Session Load</Text>
+              <Text style={styles.sectionTitle}>{isStrength ? 'Session AU' : 'Session Load'}</Text>
               <View style={styles.loadGrid}>
                 <LoadChip label="RPE"  value={workout.rpe}  color={tokens.color.warning} />
-                <LoadChip label="Load" value={sessionLoad!} color={tokens.color.primary} />
+                <LoadChip label="AU" value={sessionLoad!} color={tokens.color.primary} />
               </View>
             </View>
           )}
 
-          {ls?.sourceDetail?.type === 'hevy_parsed' && ls.sourceDetail.volume && (
+          {strengthFatigue && (
             <View style={styles.detailSection}>
-              <Text style={styles.sectionTitle}>Hevy Volume</Text>
+              <Text style={styles.sectionTitle}>Fatigue Indicators</Text>
               <View style={styles.loadGrid}>
-                {ls.sourceDetail.volume.legs > 0 && (
-                  <HevyVolumeChip label="Legs"  value={ls.sourceDetail.volume.legs}  color={tokens.color.success} />
-                )}
-                {ls.sourceDetail.volume.upper > 0 && (
-                  <HevyVolumeChip label="Upper" value={ls.sourceDetail.volume.upper} color={tokens.color.warning} />
-                )}
-                {ls.sourceDetail.volume.core > 0 && (
-                  <HevyVolumeChip label="Core"  value={ls.sourceDetail.volume.core}  color={tokens.color.accent} />
-                )}
+                <LoadChip label="Leg" value={strengthFatigue.legFatigue} color={tokens.color.success} hideZero={false} />
+                <LoadChip label="Body" value={strengthFatigue.totalBodyFatigue} color={tokens.color.accent} hideZero={false} />
               </View>
             </View>
           )}
@@ -214,8 +224,8 @@ export function WorkoutCard({ workout, onDelete }: WorkoutCardProps) {
   );
 }
 
-function LoadChip({ label, value, color }: { label: string; value: number; color: string }) {
-  if (value <= 0) return null;
+function LoadChip({ label, value, color, hideZero = true }: { label: string; value: number; color: string; hideZero?: boolean }) {
+  if (hideZero && value <= 0) return null;
   return (
     <View style={styles.loadChip}>
       <View style={[styles.chipIndicator, { backgroundColor: color }]} />
@@ -225,16 +235,22 @@ function LoadChip({ label, value, color }: { label: string; value: number; color
   );
 }
 
-function HevyVolumeChip({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <View style={styles.loadChip}>
-      <View style={[styles.chipIndicator, { backgroundColor: color }]} />
-      <Text style={styles.chipLabel}>{label}</Text>
-      <Text style={[styles.chipValue, { color }]}>
-        {value >= 1000 ? `${(value / 1000).toFixed(1)}t` : `${Math.round(value)}kg`}
-      </Text>
-    </View>
-  );
+function getStrengthFatigue(workout: any, runnerLevel?: TrainingFitnessLevel | null) {
+  if (!workout?.exercises?.length) return null;
+  const session: StrengthSession = {
+    durationMin: (workout.durationSec || 0) / 60,
+    sessionRpe: workout.rpe || 7,
+    sets: workout.exercises.flatMap((ex: any) =>
+      ((ex.sets as any[]) || []).map((s: any) => ({
+        name: ex.name,
+        reps: Number(s.reps) || 0,
+        weightKg: Number(s.weight) || 0,
+        rpe: Number(s.rpe) || workout.rpe || 7,
+      }))
+    ),
+  };
+  if (session.sets.length === 0) return null;
+  return exerciseFatigueBreakdown(session, runnerLevel);
 }
 
 const styles = StyleSheet.create({

@@ -20,6 +20,10 @@ export interface HevyParseResult {
   };
 }
 
+export function isHevyLog(description?: string | null): boolean {
+  return !!description && /logged\s+with\s+hevy/i.test(description);
+}
+
 /**
  * Section 14: Muscular Stress Load (MSL) Calculation.
  */
@@ -89,7 +93,7 @@ function getSystemicCoefficient(name: string): number {
 
 export function parseHevyLog(
 description: string): HevyParseResult | null {
-  if (!description || !description.includes('Logged with Hevy')) return null;
+  if (!isHevyLog(description)) return null;
 
   const lines = description.split('\n');
   const exercises: ParsedExercise[] = [];
@@ -157,7 +161,7 @@ description: string): HevyParseResult | null {
 
   for (const line of lines) {
     const cleanLine = line.trim();
-    if (!cleanLine || cleanLine.includes('Logged with Hevy')) continue;
+    if (!cleanLine || isHevyLog(cleanLine)) continue;
 
     // 1. Detect Exercise Name (Lines that don't start with "Set")
     if (!cleanLine.toLowerCase().startsWith('set ')) {

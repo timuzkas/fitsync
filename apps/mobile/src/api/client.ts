@@ -107,7 +107,7 @@ export const api = {
     return res.json();
   },
 
-  async linkWorkoutToPlannedRace(deviceId: string, deviceSecret: string, plannedRaceId: string, linkedWorkoutId: string) {
+  async linkWorkoutToPlannedRace(deviceId: string, deviceSecret: string, plannedRaceId: string, linkedWorkoutId: string | null) {
     const res = await apiFetch('/api/workouts', {
       method: 'PATCH',
       headers: headers(deviceId, deviceSecret),
@@ -190,8 +190,12 @@ export const api = {
     return res.json();
   },
 
-  async getLoadToday(deviceId: string, deviceSecret: string) {
-    const res = await apiFetch('/api/load/today', { headers: headers(deviceId, deviceSecret) });
+  async getLoadToday(deviceId: string, deviceSecret: string, runnerLevel?: string | null) {
+    const requestHeaders = {
+      ...headers(deviceId, deviceSecret),
+      ...(runnerLevel ? { 'X-Runner-Level': runnerLevel } : {}),
+    };
+    const res = await apiFetch('/api/load/today', { headers: requestHeaders });
     if (!res.ok) throw new Error('Failed to fetch load');
     return res.json();
   },

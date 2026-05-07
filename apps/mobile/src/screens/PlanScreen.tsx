@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Dimensions, LayoutAnimation, UIManager, Platform,
+  Dimensions, LayoutAnimation, UIManager, Platform, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -11,6 +11,7 @@ import {
   generateSmartPlan,
   adaptPlanAfterNewWorkout,
   DailyPlan,
+  PlanAdjustmentChoice,
   getDayTypeColor,
   getDayTypeIcon,
   getVdotZoneLabel,
@@ -18,7 +19,7 @@ import {
 import { evaluateAdaptiveLevel } from '../../../../packages/shared/planner';
 import { TrainingTarget } from '../types';
 import { tokens } from '../tokens';
-import { ActionSheet } from '../components/ui/BottomSheet';
+import { ActionSheet, BottomSheet } from '../components/ui/BottomSheet';
 
 if (Platform.OS === 'android') {
   UIManager.setLayoutAnimationEnabledExperimental?.(true);
@@ -33,7 +34,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface PlannedRaceAction {
-  race: any;
+  day?: DailyPlan;
+  race?: any;
   dayType?: 'today' | 'tomorrow' | 'upcoming';
 }
 
@@ -43,6 +45,9 @@ export default function PlanScreen() {
   const {
     deviceId, deviceSecret, athleteProfile, planConfig, target: storedTarget,
     setTarget: setStoredTarget, _hasHydrated, updatePlanConfig,
+    planWorkoutLinks = {}, setPlanWorkoutLink, unsetPlanWorkoutLink,
+    planAdjustmentChoices = {}, planPerformedChoices = {},
+    setPlanAdjustmentChoice, setPlanPerformedChoice,
   } = useDeviceStore();
 
   const [target, setTarget] = useState<TrainingTarget | null>(route.params?.target || storedTarget || null);
@@ -53,9 +58,13 @@ export default function PlanScreen() {
   const [saved, setSaved] = useState(false);
   const [readiness, setReadiness] = useState(0.7);
   const [hideRestDays, setHideRestDays] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   // ActionSheet state
   const [raceAction, setRaceAction] = useState<PlannedRaceAction | null>(null);
+  const [linkSheetDay, setLinkSheetDay] = useState<DailyPlan | null>(null);
+  const [linkSheetRace, setLinkSheetRace] = useState<any | null>(null);
+  const [linkPerformedChoice, setLinkPerformedChoiceState] = useState<PlanAdjustmentChoice>('downgraded');
   const [resetSheet, setResetSheet] = useState(false);
 
   const handleSavePlan = useCallback(() => {
@@ -72,7 +81,36 @@ export default function PlanScreen() {
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
   };
 
+  const dateKey = (dateVal: string | Date | undefined) => {
+    if (!dateVal) return '';
+    const d = typeof dateVal === 'string' ? new Date(dateVal) : new Date(dateVal);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
+  const getPlanKey = useCallback((day: DailyPlan) => (
+    `${target?.id || 'target'}:${dateKey(day.date)}:${day.dayNum}`
+  ), [target?.id]);
+
+  const formatWorkoutLine = (w: any) => {
+    const dist = w.distanceM ? `${(w.distanceM / 1000).toFixed(1)}km` : '';
+    const pace = w.distanceM && w.durationSec
+      ? `${formatPaceFromSec(w.durationSec / (w.distanceM / 1000))}/km`
+      : '';
+    const dur = w.durationSec ? formatDuration(w.durationSec) : '';
+    return [dist, pace, dur].filter(Boolean).join(' · ');
+  };
+
+  const formatPaceFromSec = (sec: number) => {
+    if (!sec || !Number.isFinite(sec)) return '--';
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
   const handleLinkRace = useCallback(async (race: any) => {
+    const did = deviceId;
+    const secret = deviceSecret;
+    if (!did || !secret) return;
     const raceDate = new Date(race.startedAt);
     const raceDateTime = raceDate.getTime();
 
@@ -87,7 +125,7 @@ export default function PlanScreen() {
     };
 
     const refreshRaces = () =>
-      api.getPlannedRaces(deviceId, deviceSecret).then(r => setPlannedRaces(r.plannedRaces || [])).catch(console.error);
+      api.getPlannedRaces(did, secret).then(r => setPlannedRaces(r.plannedRaces || [])).catch(console.error);
 
     const nearbyWorkouts = availableWorkouts.filter((w: any) => {
       const diffDays = Math.abs(new Date(w.startedAt).getTime() - raceDateTime) / (1000 * 60 * 60 * 24);
@@ -101,30 +139,36 @@ export default function PlanScreen() {
 
     if (nearbyWorkouts.length === 1) {
       try {
-        await api.linkWorkoutToPlannedRace(deviceId, deviceSecret, race.id, nearbyWorkouts[0].id);
+        await api.linkWorkoutToPlannedRace(did, secret, race.id, nearbyWorkouts[0].id);
         refreshRaces();
       } catch { /* silent */ }
     } else {
       // Multiple nearby — for now link first; ideally show a picker sheet (future improvement)
       try {
-        await api.linkWorkoutToPlannedRace(deviceId, deviceSecret, race.id, nearbyWorkouts[0].id);
+        await api.linkWorkoutToPlannedRace(did, secret, race.id, nearbyWorkouts[0].id);
         refreshRaces();
       } catch { /* silent */ }
     }
   }, [deviceId, deviceSecret, availableWorkouts]);
 
   const handleUnlinkRace = useCallback(async (race: any) => {
+    const did = deviceId;
+    const secret = deviceSecret;
+    if (!did || !secret) return;
     try {
-      await api.linkWorkoutToPlannedRace(deviceId, deviceSecret, race.id, null);
-      api.getPlannedRaces(deviceId, deviceSecret).then(r => setPlannedRaces(r.plannedRaces || [])).catch(console.error);
+      await api.linkWorkoutToPlannedRace(did, secret, race.id, null);
+      api.getPlannedRaces(did, secret).then(r => setPlannedRaces(r.plannedRaces || [])).catch(console.error);
     } catch { /* silent */ }
   }, [deviceId, deviceSecret]);
 
   const handleDeletePlanned = useCallback(async (raceId: string) => {
+    const did = deviceId;
+    const secret = deviceSecret;
+    if (!did || !secret) return;
     try {
-      await api.deleteWorkout(deviceId, deviceSecret, raceId);
+      await api.deleteWorkout(did, secret, raceId);
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      api.getPlannedRaces(deviceId, deviceSecret).then(r => setPlannedRaces(r.plannedRaces || [])).catch(console.error);
+      api.getPlannedRaces(did, secret).then(r => setPlannedRaces(r.plannedRaces || [])).catch(console.error);
     } catch { /* silent */ }
   }, [deviceId, deviceSecret]);
 
@@ -161,8 +205,8 @@ export default function PlanScreen() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const { dailyPlan, weeklyStats, progress, daysRemaining, completedDist, targetDist } = useMemo(() => {
-    if (!_hasHydrated || !target) return { dailyPlan: [], weeklyStats: [], progress: 0, daysRemaining: 0, completedDist: 0, targetDist: 0 };
+  const { dailyPlan, historyPlan, weeklyStats, progress, daysRemaining, completedDist, targetDist } = useMemo(() => {
+    if (!_hasHydrated || !target) return { dailyPlan: [], historyPlan: [], weeklyStats: [], progress: 0, daysRemaining: 0, completedDist: 0, targetDist: 0 };
 
     const activities = workouts.map(w => ({
       date: new Date(w.startedAt),
@@ -209,6 +253,15 @@ export default function PlanScreen() {
       target, activities, athlete, config, readinessScores, temps, plannedRaceActivities,
     );
 
+    const targetCreatedAt = target.createdAt ? new Date(target.createdAt) : null;
+    targetCreatedAt?.setHours(0, 0, 0, 0);
+    const shouldBuildHistory = !!targetCreatedAt && targetCreatedAt < today;
+    const historyPlan = shouldBuildHistory
+      ? generateSmartPlan(
+          target, activities, athlete, config, readinessScores, temps, plannedRaceActivities, targetCreatedAt!,
+        ).dailyPlan.filter(day => dateKey(day.date) < dateKey(today))
+      : [];
+
     let dailyPlan = basePlan;
     const todayStr = today.toISOString().split('T')[0];
     const completedWorkouts = workouts
@@ -228,24 +281,113 @@ export default function PlanScreen() {
       .filter(d => d.dayNum < (totalDays - daysRemaining))
       .reduce((sum, d) => sum + d.targetDistanceKm, 0);
 
-    return { dailyPlan, weeklyStats, progress, daysRemaining, completedDist, targetDist: target.distanceKm };
-  }, [target, workouts, athleteProfile, planConfig, today, _hasHydrated, readiness]);
+    return { dailyPlan, historyPlan, weeklyStats, progress, daysRemaining, completedDist, targetDist: target.distanceKm };
+  }, [target, workouts, plannedRaces, athleteProfile, planConfig, today, _hasHydrated, readiness]);
 
-  const todayPlan = dailyPlan.find(d => d.dayNum === 1);
-  const tomorrowPlan = dailyPlan.find(d => d.dayNum === 2);
+  const getChosenPlan = useCallback((day: DailyPlan): DailyPlan => {
+    if (!day.adjustmentOptions) return day;
+    const choice = planAdjustmentChoices[getPlanKey(day)] || day.selectedAdjustment || 'downgraded';
+    const suggestion = day.adjustmentOptions[choice];
+    return suggestion ? { ...day, ...suggestion, selectedAdjustment: choice } : day;
+  }, [getPlanKey, planAdjustmentChoices]);
+
+  const visibleDailyPlan = useMemo(
+    () => dailyPlan.map(getChosenPlan),
+    [dailyPlan, getChosenPlan],
+  );
+  const visibleHistoryPlan = useMemo(
+    () => historyPlan.map(getChosenPlan),
+    [historyPlan, getChosenPlan],
+  );
+
+  const getChoiceForDay = useCallback((day: DailyPlan): PlanAdjustmentChoice => (
+    planAdjustmentChoices[getPlanKey(day)] || day.selectedAdjustment || 'downgraded'
+  ), [getPlanKey, planAdjustmentChoices]);
+
+  const setChoiceForDay = useCallback((day: DailyPlan, choice: PlanAdjustmentChoice) => {
+    setPlanAdjustmentChoice(getPlanKey(day), choice);
+  }, [getPlanKey, setPlanAdjustmentChoice]);
+
+  const getPerformedChoiceForDay = useCallback((day: DailyPlan): PlanAdjustmentChoice | null => (
+    planPerformedChoices[getPlanKey(day)] || null
+  ), [getPlanKey, planPerformedChoices]);
+
+  const todayPlan = visibleDailyPlan.find(d => d.dayNum === 1);
+  const tomorrowPlan = visibleDailyPlan.find(d => d.dayNum === 2);
 
   const getPlannedRaceForDay = (day: any) => {
     if (!day?.date) return null;
-    const d = new Date(day.date);
-    const dayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dayStr = dateKey(day.date);
     return plannedRaces.find((r: any) => {
-      const rd = new Date(r.startedAt);
-      const rdStr = `${rd.getFullYear()}-${String(rd.getMonth() + 1).padStart(2, '0')}-${String(rd.getDate()).padStart(2, '0')}`;
-      return rdStr === dayStr;
+      return dateKey(r.startedAt) === dayStr;
     });
   };
 
-  const upcomingPlanRaw = expanded ? dailyPlan.slice(2) : dailyPlan.slice(2, 5);
+  const workoutById = useMemo(() => {
+    const map = new Map<string, any>();
+    [...workouts, ...availableWorkouts].forEach((w: any) => {
+      if (w?.id) map.set(w.id, w);
+    });
+    plannedRaces.forEach((r: any) => {
+      if (r?.workout?.id) map.set(r.workout.id, r.workout);
+    });
+    return map;
+  }, [workouts, availableWorkouts, plannedRaces]);
+
+  const getLinkedWorkoutForDay = (day: DailyPlan, plannedOnDay?: any) => {
+    if (plannedOnDay?.workout) return plannedOnDay.workout;
+    const linkedId = plannedOnDay?.linkedWorkoutId || planWorkoutLinks[getPlanKey(day)];
+    return linkedId ? workoutById.get(linkedId) : null;
+  };
+
+  const getPlanStatus = (day: DailyPlan, plannedOnDay?: any): 'planned' | 'missed' | 'completed' => {
+    if (getLinkedWorkoutForDay(day, plannedOnDay)) return 'completed';
+    if (day.targetDistanceKm > 0 && dateKey(day.date) < dateKey(today)) return 'missed';
+    return 'planned';
+  };
+
+  const getStatusStyle = (status: 'planned' | 'missed' | 'completed') => {
+    if (status === 'completed') return { label: 'COMPLETED', color: tokens.color.success, icon: 'checkmark-circle-outline' };
+    if (status === 'missed') return { label: 'MISSED', color: tokens.color.danger, icon: 'close-circle-outline' };
+    return { label: 'PLANNED', color: tokens.color.textMuted, icon: 'time-outline' };
+  };
+
+  const linkLocalPlanDay = (day: DailyPlan, workout: any) => {
+    setPlanWorkoutLink(getPlanKey(day), workout.id);
+    if (day.adjustmentOptions) {
+      setPlanPerformedChoice(getPlanKey(day), linkPerformedChoice);
+    }
+    setLinkSheetDay(null);
+  };
+
+  const unlinkLocalPlanDay = (day: DailyPlan) => {
+    unsetPlanWorkoutLink(getPlanKey(day));
+  };
+
+  const refreshPlannedRaces = () => {
+    if (!deviceId || !deviceSecret) return Promise.resolve();
+    return api.getPlannedRaces(deviceId, deviceSecret).then(r => {
+      setPlannedRaces(r.plannedRaces || []);
+      setAvailableWorkouts(r.availableWorkouts || []);
+    }).catch(console.error);
+  };
+
+  const linkBackendPlan = async (race: any, workout: any) => {
+    if (!deviceId || !deviceSecret) return;
+    try {
+      await api.linkWorkoutToPlannedRace(deviceId, deviceSecret, race.id, workout.id);
+      if (linkSheetDay?.adjustmentOptions) {
+        setPlanPerformedChoice(getPlanKey(linkSheetDay), linkPerformedChoice);
+      }
+      setLinkSheetRace(null);
+      setLinkSheetDay(null);
+      refreshPlannedRaces();
+    } catch {
+      Alert.alert('Link failed', 'Could not link this exported record.');
+    }
+  };
+
+  const upcomingPlanRaw = expanded ? visibleDailyPlan.slice(2) : visibleDailyPlan.slice(2, 5);
   const upcomingPlan = hideRestDays ? upcomingPlanRaw.filter(d => d.type !== 'Rest') : upcomingPlanRaw;
 
   const formatPace = (sec: number) => {
@@ -273,11 +415,18 @@ export default function PlanScreen() {
     setHideRestDays(h => !h);
   };
 
-  // Build ActionSheet actions for a planned race
-  const buildRaceActions = (race: any) => {
-    const isLinked = !!race?.linkedWorkoutId;
+  const handleToggleHistory = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowHistory(h => !h);
+  };
+
+  // Build ActionSheet actions for a plan block or backend planned workout.
+  const buildRaceActions = (action: PlannedRaceAction) => {
+    const race = action.race;
+    const day = action.day;
+    const isLinked = !!(race?.linkedWorkoutId || (day && planWorkoutLinks[getPlanKey(day)]));
     const actions = [
-      {
+      race && {
         label: 'Edit',
         icon: 'pencil-outline',
         onPress: () => navigation.navigate('AddWorkout', { editWorkout: race }),
@@ -286,20 +435,31 @@ export default function PlanScreen() {
         ? {
             label: 'Unlink Completed Workout',
             icon: 'unlink-outline',
-            onPress: () => handleUnlinkRace(race),
+            onPress: () => race ? handleUnlinkRace(race) : day && unlinkLocalPlanDay(day),
           }
         : {
-            label: 'Link to Completed Workout',
+            label: 'Link Strava Record',
             icon: 'link-outline',
-            onPress: () => handleLinkRace(race),
+            onPress: () => {
+              if (!day && !race) return;
+              if (availableWorkouts.length === 0) {
+                Alert.alert('No exported records', 'Sync Strava first, then link the planned run to a completed record.');
+                return;
+              }
+              if (race) setLinkSheetRace(race);
+              setLinkSheetDay(day || null);
+              if (day?.adjustmentOptions) {
+                setLinkPerformedChoiceState(getChoiceForDay(day));
+              }
+            },
           },
-      {
+      race && {
         label: 'Delete',
         icon: 'trash-outline',
         destructive: true,
         onPress: () => handleDeletePlanned(race.id),
       },
-    ];
+    ].filter(Boolean) as any[];
     return actions;
   };
 
@@ -333,6 +493,47 @@ export default function PlanScreen() {
   }
 
   const activeRace = raceAction?.race;
+  const activeDay = raceAction?.day;
+
+  const renderSuggestionToggle = (day: DailyPlan, compact = false) => {
+    if (!day.adjustmentOptions) return null;
+    const selected = getChoiceForDay(day);
+    return (
+      <View style={[styles.suggestionWrap, compact && styles.suggestionWrapCompact]}>
+        {(['standard', 'downgraded'] as PlanAdjustmentChoice[]).map(choice => (
+          <TouchableOpacity
+            key={choice}
+            style={[
+              styles.suggestionBtn,
+              selected === choice && styles.suggestionBtnActive,
+            ]}
+            onPress={(event) => {
+              event.stopPropagation();
+              setChoiceForDay(day, choice);
+            }}
+            activeOpacity={0.75}
+          >
+            <Text style={[
+              styles.suggestionBtnText,
+              selected === choice && styles.suggestionBtnTextActive,
+            ]}>
+              {choice === 'standard' ? 'Standard' : 'Downgraded'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
+  const renderPerformedChoice = (day: DailyPlan) => {
+    const performed = getPerformedChoiceForDay(day);
+    if (!performed) return null;
+    return (
+      <Text style={styles.performedText}>
+        Performed: {performed === 'standard' ? 'Standard' : 'Downgraded'}
+      </Text>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -416,16 +617,84 @@ export default function PlanScreen() {
           </View>
         )}
 
+        {/* ── Past blocks ── */}
+        {visibleHistoryPlan.length > 0 && (
+          <View style={styles.historySection}>
+            <TouchableOpacity style={styles.historyHeader} onPress={handleToggleHistory} activeOpacity={0.75}>
+              <View>
+                <Text style={styles.historyTitle}>Past blocks</Text>
+                <Text style={styles.historySub}>
+                  {formatDate(visibleHistoryPlan[0].date)} to {formatDate(visibleHistoryPlan[visibleHistoryPlan.length - 1].date)}
+                </Text>
+              </View>
+              <View style={styles.historyHeaderRight}>
+                <Text style={styles.historyCount}>{visibleHistoryPlan.length}</Text>
+                <Ionicons
+                  name={showHistory ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={tokens.color.textMuted}
+                />
+              </View>
+            </TouchableOpacity>
+
+            {showHistory && visibleHistoryPlan.map((day) => {
+              const plannedOnDay = getPlannedRaceForDay(day);
+              const linkedWorkout = getLinkedWorkoutForDay(day, plannedOnDay);
+              const status = getPlanStatus(day, plannedOnDay);
+              const statusStyle = getStatusStyle(status);
+              const isClickable = !!(plannedOnDay || day.isRaceDay || day.targetDistanceKm > 0);
+              const accentColor = getDayTypeColor(day.type);
+
+              return (
+                <TouchableOpacity
+                  key={`history-${day.date.toString()}`}
+                  style={[styles.historyDayCard, isClickable && styles.historyDayCardClickable]}
+                  onPress={() => {
+                    if (isClickable) setRaceAction({ day, race: plannedOnDay, dayType: 'upcoming' });
+                  }}
+                  activeOpacity={isClickable ? 0.75 : 1}
+                >
+                  <View style={styles.historyDayTop}>
+                    <View style={styles.historyDayDateWrap}>
+                      <View style={[styles.historyDot, { backgroundColor: accentColor }]} />
+                      <Text style={styles.historyDayName}>{day.dayOfWeek}, {formatDate(day.date)}</Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.color + '18' }]}>
+                      <Ionicons name={statusStyle.icon as any} size={10} color={statusStyle.color} />
+                      <Text style={[styles.statusBadgeText, { color: statusStyle.color }]}>{statusStyle.label}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.historyDayBody}>
+                    <Text style={styles.historyDayIcon}>{getDayTypeIcon(day.type)}</Text>
+                    <View style={styles.historyDayInfo}>
+                      <Text style={styles.historyDayWorkout}>{day.title}</Text>
+                      <Text style={styles.historyDayDesc} numberOfLines={2}>{day.description}</Text>
+                      {linkedWorkout && (
+                        <Text style={styles.linkedWorkoutText}>Actual {formatWorkoutLine(linkedWorkout)}</Text>
+                      )}
+                      {linkedWorkout && renderPerformedChoice(day)}
+                    </View>
+                    {day.targetDistanceKm > 0 && (
+                      <Text style={styles.historyMetric}>{day.targetDistanceKm}km</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         {/* ── Today card ── */}
         {todayPlan && (() => {
           const plannedOnDay = getPlannedRaceForDay(todayPlan);
-          const isLinked = !!plannedOnDay?.linkedWorkoutId;
-          const linkedWorkout = plannedOnDay?.workout;
+          const linkedWorkout = getLinkedWorkoutForDay(todayPlan, plannedOnDay);
+          const status = getPlanStatus(todayPlan, plannedOnDay);
+          const statusStyle = getStatusStyle(status);
           return (
             <TouchableOpacity
               style={styles.todayCard}
-              onPress={() => { if (plannedOnDay) setRaceAction({ race: plannedOnDay, dayType: 'today' }); }}
-              activeOpacity={plannedOnDay ? 0.8 : 1}
+              onPress={() => { if (todayPlan.targetDistanceKm > 0 || plannedOnDay) setRaceAction({ day: todayPlan, race: plannedOnDay, dayType: 'today' }); }}
+              activeOpacity={todayPlan.targetDistanceKm > 0 || plannedOnDay ? 0.8 : 1}
             >
               <View style={styles.todayBadge}>
                 <Text style={styles.todayBadgeText}>TODAY</Text>
@@ -445,23 +714,28 @@ export default function PlanScreen() {
                         <Text style={styles.taperBadgeText}>↓ TAPER</Text>
                       </View>
                     )}
-                    {isLinked && (
+                    <View style={[styles.statusBadge, { backgroundColor: statusStyle.color + '22' }]}>
+                      <Ionicons name={statusStyle.icon as any} size={10} color={statusStyle.color} />
+                      <Text style={[styles.statusBadgeText, { color: statusStyle.color }]}>{statusStyle.label}</Text>
+                    </View>
+                    {linkedWorkout && (
                       <View style={styles.linkedBadge}>
-                        <Ionicons name="checkmark-circle" size={10} color={tokens.color.success} />
-                        <Text style={styles.linkedBadgeText}>DONE</Text>
+                        <Ionicons name="link-outline" size={10} color={tokens.color.success} />
+                        <Text style={styles.linkedBadgeText}>LINKED</Text>
                       </View>
                     )}
                     {todayPlan.rpe > 0 && (
                       <Text style={styles.rpeText}>RPE {todayPlan.rpe}</Text>
                     )}
                   </View>
-                  {isLinked && linkedWorkout && (
+                  {linkedWorkout && (
                     <Text style={styles.linkedWorkoutText}>
                       {linkedWorkout.distanceM ? `${(linkedWorkout.distanceM / 1000).toFixed(1)}km` : ''}
                       {linkedWorkout.durationSec ? ` · ${formatDuration(linkedWorkout.durationSec)}` : ''}
                     </Text>
                   )}
                   <Text style={styles.todayDesc}>{todayPlan.description}</Text>
+                  {renderSuggestionToggle(todayPlan)}
                 </View>
               </View>
               <View style={styles.todayMetrics}>
@@ -479,7 +753,7 @@ export default function PlanScreen() {
                       <Text style={styles.todayMetricValue}>{formatPace(todayPlan.targetPaceSecPerKm)}</Text>
                       <Text style={styles.todayMetricLabel}>pace</Text>
                     </View>
-                    {plannedOnDay && (
+                    {(todayPlan.targetDistanceKm > 0 || plannedOnDay) && (
                       <View style={styles.tapHint}>
                         <Ionicons name="ellipsis-horizontal" size={14} color={tokens.color.textTertiary} />
                       </View>
@@ -489,6 +763,13 @@ export default function PlanScreen() {
                   <Text style={styles.restLabel}>Rest Day</Text>
                 )}
               </View>
+              {linkedWorkout && todayPlan.targetDistanceKm > 0 && (
+                <View style={styles.compareRow}>
+                  <Text style={styles.compareText}>Plan {todayPlan.targetDistanceKm}km · {formatPace(todayPlan.targetPaceSecPerKm)}/km</Text>
+                  <Text style={styles.compareText}>Real {formatWorkoutLine(linkedWorkout)}</Text>
+                  {renderPerformedChoice(todayPlan)}
+                </View>
+              )}
             </TouchableOpacity>
           );
         })()}
@@ -496,12 +777,14 @@ export default function PlanScreen() {
         {/* ── Tomorrow card ── */}
         {tomorrowPlan && (() => {
           const plannedOnDay = getPlannedRaceForDay(tomorrowPlan);
-          const isLinked = !!plannedOnDay?.linkedWorkoutId;
+          const linkedWorkout = getLinkedWorkoutForDay(tomorrowPlan, plannedOnDay);
+          const status = getPlanStatus(tomorrowPlan, plannedOnDay);
+          const statusStyle = getStatusStyle(status);
           return (
             <TouchableOpacity
               style={styles.tomorrowCard}
-              onPress={() => { if (plannedOnDay) setRaceAction({ race: plannedOnDay, dayType: 'tomorrow' }); }}
-              activeOpacity={plannedOnDay ? 0.8 : 1}
+              onPress={() => { if (tomorrowPlan.targetDistanceKm > 0 || plannedOnDay) setRaceAction({ day: tomorrowPlan, race: plannedOnDay, dayType: 'tomorrow' }); }}
+              activeOpacity={tomorrowPlan.targetDistanceKm > 0 || plannedOnDay ? 0.8 : 1}
             >
               <View style={styles.tomorrowBadge}>
                 <Text style={styles.tomorrowBadgeText}>TOMORROW</Text>
@@ -511,7 +794,14 @@ export default function PlanScreen() {
                   <Text style={styles.tomorrowIcon}>{getDayTypeIcon(tomorrowPlan.type)}</Text>
                   <View style={styles.tomorrowInfo}>
                     <Text style={styles.tomorrowTitle}>{tomorrowPlan.title}</Text>
+                    <View style={[styles.statusBadge, styles.statusBadgeInline, { backgroundColor: statusStyle.color + '22' }]}>
+                      <Ionicons name={statusStyle.icon as any} size={10} color={statusStyle.color} />
+                      <Text style={[styles.statusBadgeText, { color: statusStyle.color }]}>{statusStyle.label}</Text>
+                    </View>
+                    {linkedWorkout && <Text style={styles.linkedWorkoutText}>Actual {formatWorkoutLine(linkedWorkout)}</Text>}
                     <Text style={styles.tomorrowDesc}>{tomorrowPlan.description}</Text>
+                    {renderSuggestionToggle(tomorrowPlan, true)}
+                    {linkedWorkout && renderPerformedChoice(tomorrowPlan)}
                   </View>
                 </View>
                 <View style={styles.tomorrowRight}>
@@ -523,7 +813,7 @@ export default function PlanScreen() {
                   ) : (
                     <Text style={styles.restLabelSm}>Rest</Text>
                   )}
-                  {plannedOnDay && (
+                  {(tomorrowPlan.targetDistanceKm > 0 || plannedOnDay) && (
                     <Ionicons name="ellipsis-horizontal" size={14} color={tokens.color.textTertiary} style={{ marginTop: 4 }} />
                   )}
                 </View>
@@ -556,14 +846,14 @@ export default function PlanScreen() {
             </View>
 
             {upcomingPlan.map((day, idx) => {
-              const d = new Date(day.date);
-              const dayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              const dayStr = dateKey(day.date);
               const plannedOnDay = plannedRaces.find((r: any) => {
-                const rd = new Date(r.startedAt);
-                const rdStr = `${rd.getFullYear()}-${String(rd.getMonth() + 1).padStart(2, '0')}-${String(rd.getDate()).padStart(2, '0')}`;
-                return rdStr === dayStr;
+                return dateKey(r.startedAt) === dayStr;
               });
-              const isClickable = !!(plannedOnDay || day.isRaceDay);
+              const linkedWorkout = getLinkedWorkoutForDay(day, plannedOnDay);
+              const status = getPlanStatus(day, plannedOnDay);
+              const statusStyle = getStatusStyle(status);
+              const isClickable = !!(plannedOnDay || day.isRaceDay || day.targetDistanceKm > 0);
               const accentColor = getDayTypeColor(day.type);
               const isLast = idx === upcomingPlan.length - 1;
 
@@ -589,7 +879,7 @@ export default function PlanScreen() {
                   <TouchableOpacity
                     style={[styles.dayCard, isClickable && styles.dayCardClickable]}
                     onPress={() => {
-                      if (plannedOnDay) setRaceAction({ race: plannedOnDay, dayType: 'upcoming' });
+                      if (isClickable) setRaceAction({ day, race: plannedOnDay, dayType: 'upcoming' });
                     }}
                     activeOpacity={isClickable ? 0.75 : 1}
                   >
@@ -609,6 +899,10 @@ export default function PlanScreen() {
                             <Text style={styles.taperBadgeText}>↓ TAPER</Text>
                           </View>
                         )}
+                        <View style={[styles.statusBadge, { backgroundColor: statusStyle.color + '22' }]}>
+                          <Ionicons name={statusStyle.icon as any} size={10} color={statusStyle.color} />
+                          <Text style={[styles.statusBadgeText, { color: statusStyle.color }]}>{statusStyle.label}</Text>
+                        </View>
                         <View style={[styles.dayTypeBadge, { backgroundColor: accentColor + '20' }]}>
                           <Text style={[styles.dayTypeText, { color: accentColor }]}>
                             {day.type.toUpperCase()}
@@ -625,6 +919,11 @@ export default function PlanScreen() {
                           {getVdotZoneLabel(day.vdotZone)}
                         </Text>
                         <Text style={styles.dayDesc}>{day.description}</Text>
+                        {renderSuggestionToggle(day, true)}
+                        {linkedWorkout && (
+                          <Text style={styles.linkedWorkoutText}>Actual {formatWorkoutLine(linkedWorkout)}</Text>
+                        )}
+                        {linkedWorkout && renderPerformedChoice(day)}
                       </View>
                     </View>
 
@@ -635,7 +934,7 @@ export default function PlanScreen() {
                         <Text style={styles.dayMetricValue}>{day.targetDurationMin}min</Text>
                         <Text style={styles.dayMetricSep}>·</Text>
                         <Text style={styles.dayMetricValue}>{formatPace(day.targetPaceSecPerKm)}/km</Text>
-                        {plannedOnDay && (
+                        {(day.targetDistanceKm > 0 || plannedOnDay) && (
                           <Ionicons
                             name="ellipsis-horizontal"
                             size={14}
@@ -660,18 +959,86 @@ export default function PlanScreen() {
       <ActionSheet
         visible={raceAction !== null}
         onClose={() => setRaceAction(null)}
-        title={activeRace?.title || 'Planned Workout'}
-        subtitle={activeRace ? (() => {
-          const d = new Date(activeRace.startedAt);
+        title={activeRace?.title || activeDay?.title || 'Planned Workout'}
+        subtitle={raceAction ? (() => {
+          const d = new Date(activeRace?.startedAt || activeDay?.date);
           const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-          return activeRace.distanceM
-            ? `${dateStr} · ${(activeRace.distanceM / 1000).toFixed(1)} km`
+          return activeRace?.distanceM
+            ? `${dateStr} · ${(activeRace.distanceM! / 1000).toFixed(1)} km`
+            : activeDay?.targetDistanceKm
+            ? `${dateStr} · ${activeDay.targetDistanceKm} km planned`
             : dateStr;
         })() : undefined}
-        actions={activeRace ? buildRaceActions(activeRace) : []}
+        actions={raceAction ? buildRaceActions(raceAction) : []}
       />
 
       {/* ── Reset plan ActionSheet ── */}
+      <BottomSheet
+        visible={linkSheetDay !== null || linkSheetRace !== null}
+        onClose={() => { setLinkSheetDay(null); setLinkSheetRace(null); }}
+        title="Link Strava Record"
+      >
+        <ScrollView style={styles.linkList} showsVerticalScrollIndicator={false}>
+          {linkSheetDay?.adjustmentOptions && (
+            <View style={styles.performedPicker}>
+              <Text style={styles.performedPickerLabel}>Performed variant</Text>
+              <View style={styles.suggestionWrap}>
+                {(['standard', 'downgraded'] as PlanAdjustmentChoice[]).map(choice => (
+                  <TouchableOpacity
+                    key={choice}
+                    style={[
+                      styles.suggestionBtn,
+                      linkPerformedChoice === choice && styles.suggestionBtnActive,
+                    ]}
+                    onPress={() => setLinkPerformedChoiceState(choice)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[
+                      styles.suggestionBtnText,
+                      linkPerformedChoice === choice && styles.suggestionBtnTextActive,
+                    ]}>
+                      {choice === 'standard' ? 'Standard' : 'Downgraded'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+          {availableWorkouts
+            .filter((w: any) => {
+              const plannedDate = linkSheetDay?.date || linkSheetRace?.startedAt;
+              if (!plannedDate) return false;
+              const diffDays = Math.abs(new Date(w.startedAt).getTime() - new Date(plannedDate).getTime()) / (1000 * 60 * 60 * 24);
+              return diffDays <= 7;
+            })
+            .map((w: any) => (
+              <TouchableOpacity
+                key={w.id}
+                style={styles.linkOption}
+                onPress={() => linkSheetRace ? linkBackendPlan(linkSheetRace, w) : linkSheetDay && linkLocalPlanDay(linkSheetDay, w)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.linkOptionIcon}>
+                  <Ionicons name="walk-outline" size={18} color={tokens.color.primary} />
+                </View>
+                <View style={styles.linkOptionBody}>
+                  <Text style={styles.linkOptionTitle}>{w.title || 'Strava activity'}</Text>
+                  <Text style={styles.linkOptionMeta}>{formatDate(w.startedAt)} · {formatWorkoutLine(w)}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={tokens.color.textTertiary} />
+              </TouchableOpacity>
+            ))}
+          {availableWorkouts.filter((w: any) => {
+            const plannedDate = linkSheetDay?.date || linkSheetRace?.startedAt;
+            if (!plannedDate) return false;
+            const diffDays = Math.abs(new Date(w.startedAt).getTime() - new Date(plannedDate).getTime()) / (1000 * 60 * 60 * 24);
+            return diffDays <= 7;
+          }).length === 0 && (
+            <Text style={styles.emptyLinkText}>No exported records within 7 days of this plan block.</Text>
+          )}
+        </ScrollView>
+      </BottomSheet>
+
       <ActionSheet
         visible={resetSheet}
         onClose={() => setResetSheet(false)}
@@ -832,8 +1199,47 @@ const styles = StyleSheet.create({
   },
   linkedBadgeText: { fontSize: 9, fontWeight: '700', color: tokens.color.success },
   linkedWorkoutText: { fontSize: tokens.font.xs, color: tokens.color.success, marginTop: 2 },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statusBadgeInline: { alignSelf: 'flex-start', marginTop: 3 },
+  statusBadgeText: { fontSize: 9, fontWeight: '700' },
+  compareRow: {
+    borderTopWidth: 1,
+    borderTopColor: tokens.color.primary + '30',
+    marginTop: tokens.space.sm,
+    paddingTop: tokens.space.sm,
+    gap: 2,
+  },
+  compareText: { fontSize: tokens.font.xs, color: tokens.color.textSecondary, fontWeight: '600' },
+  performedText: { fontSize: tokens.font.xs, color: tokens.color.primary, fontWeight: '700', marginTop: 2 },
   rpeText: { fontSize: 10, color: tokens.color.textMuted, fontWeight: '600' },
   todayDesc: { fontSize: tokens.font.sm, color: tokens.color.textSecondary, marginTop: 2 },
+  suggestionWrap: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    backgroundColor: tokens.color.elevated,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    padding: 2,
+    marginTop: tokens.space.sm,
+    gap: 2,
+  },
+  suggestionWrapCompact: { marginTop: 6 },
+  suggestionBtn: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: tokens.radius.xs,
+  },
+  suggestionBtnActive: { backgroundColor: tokens.color.primary },
+  suggestionBtnText: { fontSize: 10, color: tokens.color.textMuted, fontWeight: '800' },
+  suggestionBtnTextActive: { color: '#fff' },
   todayMetrics: { flexDirection: 'row', gap: tokens.space.lg, alignItems: 'center' },
   todayMetric: { alignItems: 'center' },
   todayMetricValue: { fontSize: tokens.font.md, fontWeight: '600', color: tokens.color.textPrimary },
@@ -869,6 +1275,56 @@ const styles = StyleSheet.create({
   tomorrowMetric: { fontSize: tokens.font.md, fontWeight: '700', color: tokens.color.textSecondary },
   tomorrowMetricSub: { fontSize: tokens.font.xs, color: tokens.color.textMuted },
   restLabelSm: { fontSize: tokens.font.sm, color: tokens.color.textMuted },
+
+  // Past blocks
+  historySection: {
+    marginBottom: tokens.space.md,
+    paddingVertical: tokens.space.xs,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: tokens.color.border,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: tokens.space.sm,
+  },
+  historyTitle: {
+    fontSize: tokens.font.sm,
+    fontWeight: '700',
+    color: tokens.color.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  historySub: { fontSize: tokens.font.xs, color: tokens.color.textTertiary, marginTop: 2 },
+  historyHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  historyCount: { fontSize: tokens.font.xs, color: tokens.color.textMuted, fontWeight: '700' },
+  historyDayCard: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    padding: tokens.space.sm,
+    marginBottom: tokens.space.xs,
+    opacity: 0.82,
+  },
+  historyDayCardClickable: { borderColor: tokens.color.border },
+  historyDayTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  historyDayDateWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  historyDot: { width: 6, height: 6, borderRadius: 3 },
+  historyDayName: { fontSize: tokens.font.xs, color: tokens.color.textMuted, fontWeight: '600' },
+  historyDayBody: { flexDirection: 'row', alignItems: 'center', gap: tokens.space.sm },
+  historyDayIcon: { fontSize: 16, opacity: 0.75 },
+  historyDayInfo: { flex: 1 },
+  historyDayWorkout: { fontSize: tokens.font.sm, color: tokens.color.textSecondary, fontWeight: '600' },
+  historyDayDesc: { fontSize: tokens.font.xs, color: tokens.color.textTertiary, marginTop: 1 },
+  historyMetric: { fontSize: tokens.font.sm, color: tokens.color.textMuted, fontWeight: '700' },
 
   // Upcoming controls
   upcomingHeader: {
@@ -961,6 +1417,47 @@ const styles = StyleSheet.create({
   },
   dayMetricValue: { fontSize: tokens.font.sm, color: tokens.color.textSecondary, fontWeight: '500' },
   dayMetricSep: { fontSize: tokens.font.xs, color: tokens.color.textTertiary },
+
+  // Link picker
+  linkList: { maxHeight: 360 },
+  performedPicker: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    padding: tokens.space.md,
+    marginBottom: tokens.space.sm,
+  },
+  performedPickerLabel: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  linkOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.space.sm,
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    padding: tokens.space.md,
+    marginBottom: tokens.space.sm,
+  },
+  linkOptionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.color.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkOptionBody: { flex: 1 },
+  linkOptionTitle: { fontSize: tokens.font.sm, fontWeight: '700', color: tokens.color.textPrimary },
+  linkOptionMeta: { fontSize: tokens.font.xs, color: tokens.color.textMuted, marginTop: 2 },
+  emptyLinkText: { color: tokens.color.textMuted, textAlign: 'center', padding: tokens.space.lg },
 
   // Empty states
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: tokens.space.xl },

@@ -66,6 +66,7 @@ model Workout {
   avgHr                Int?
   maxHr                Int?
   elevationGainM       Float?    // elevation gain in meters
+  gapPaceSec           Float?    // Grade Adjusted Pace
   hrZoneTimes          Json?     // { "zone1": 120, "zone2": 300, ... }
   sufferScore          Float?
   title                String?

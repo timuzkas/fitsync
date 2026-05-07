@@ -12,6 +12,8 @@ interface LoadDashboardProps {
   calibrateEnabled?: boolean;
   isWellnessActive?: boolean;
   calibratedAt?: string;
+  statusTitleOverride?: string;
+  statusSentenceOverride?: string;
 }
 
 function acwrZone(v?: number): { color: string } {
@@ -63,6 +65,7 @@ export function LoadDashboard({
   readiness, acwr,
   legMuscularRisk = 0, totalBodyFatigue = 0,
   onCalibrate, calibrateEnabled, isWellnessActive, calibratedAt,
+  statusTitleOverride, statusSentenceOverride,
 }: LoadDashboardProps) {
   const calibratedTime = isWellnessActive && calibratedAt
     ? new Date(calibratedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -116,7 +119,7 @@ export function LoadDashboard({
         <View style={styles.panel}>
           <View style={styles.statusRow}>
             <Text style={[styles.statusTitle, { color: readinessColor }]}>
-              {readinessTitle}
+              {statusTitleOverride || readinessTitle}
             </Text>
             {isWellnessActive && (
               <View style={styles.wellnessPill}>
@@ -125,25 +128,27 @@ export function LoadDashboard({
             )}
           </View>
 
-          <Text style={styles.statusSentence}>{readinessSentence}</Text>
+          <Text style={styles.statusSentence}>
+            {statusSentenceOverride || readinessSentence}
+          </Text>
 
           <View style={styles.metricsDivider} />
 
           <View style={styles.metricsRow}>
             <MetricCol
-              label="Workload"
+              label="ACWR"
               value={acwr != null ? acwr.toFixed(2) : '—'}
               color={aw.color}
             />
             <View style={styles.metricsColDivider} />
             <MetricCol
-              label="Leg fatigue"
+              label="Leg"
               value={String(Math.round(legMuscularRisk))}
               color={lmr.color}
             />
             <View style={styles.metricsColDivider} />
             <MetricCol
-              label="Fat burn"
+              label="Body"
               value={String(Math.round(totalBodyFatigue))}
               color={tbf.color}
             />

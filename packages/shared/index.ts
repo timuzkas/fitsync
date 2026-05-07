@@ -175,3 +175,6 @@ export interface LoadHistoryDay {
   systemic: number;
   workoutCount: number;
 }
+
+export * from './trainingLoad';
+export * from './adaptiveCorrection';

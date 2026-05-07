@@ -91,12 +91,20 @@ interface DeviceState {
   target: TrainingTarget | null;
   wellness: WellnessCalibration | null;
   wellnessCalibrationHours: { start: number; end: number };
+  planWorkoutLinks: Record<string, string>;
+  planAdjustmentChoices: Record<string, 'standard' | 'downgraded'>;
+  planPerformedChoices: Record<string, 'standard' | 'downgraded'>;
   setCredentials: (deviceId: string, deviceSecret: string) => void;
   clearCredentials: () => void;
   setLoading: (loading: boolean) => void;
   setAthleteProfile: (profile: AthleteProfile | null) => void;
   setPlanConfig: (config: PlanConfig | null) => void;
+  updatePlanConfig: (updates: Partial<PlanConfig>) => void;
   setTarget: (target: TrainingTarget | null) => void;
+  setPlanWorkoutLink: (planKey: string, workoutId: string) => void;
+  unsetPlanWorkoutLink: (planKey: string) => void;
+  setPlanAdjustmentChoice: (planKey: string, choice: 'standard' | 'downgraded') => void;
+  setPlanPerformedChoice: (planKey: string, choice: 'standard' | 'downgraded') => void;
   setWellness: (wellness: WellnessCalibration | null) => void;
   setWellnessCalibrationHours: (hours: { start: number; end: number }) => void;
   _hasHydrated: boolean;
@@ -128,6 +136,9 @@ export const useDeviceStore = create<DeviceState>()(
       target: null,
       wellness: null,
       wellnessCalibrationHours: { start: 6, end: 11 },
+      planWorkoutLinks: {},
+      planAdjustmentChoices: {},
+      planPerformedChoices: {},
       _hasHydrated: false,
       setCredentials: (deviceId, deviceSecret) =>
         set({ deviceId, deviceSecret, isRegistered: true, isLoading: false }),
@@ -137,9 +148,22 @@ export const useDeviceStore = create<DeviceState>()(
       setAthleteProfile: (athleteProfile) => set({ athleteProfile }),
       setPlanConfig: (planConfig) => set({ planConfig }),
       setTarget: (target) => set({ target }),
+      setPlanWorkoutLink: (planKey, workoutId) => set(state => ({
+        planWorkoutLinks: { ...state.planWorkoutLinks, [planKey]: workoutId },
+      })),
+      unsetPlanWorkoutLink: (planKey) => set(state => {
+        const { [planKey]: _removed, ...rest } = state.planWorkoutLinks;
+        return { planWorkoutLinks: rest };
+      }),
+      setPlanAdjustmentChoice: (planKey, choice) => set(state => ({
+        planAdjustmentChoices: { ...state.planAdjustmentChoices, [planKey]: choice },
+      })),
+      setPlanPerformedChoice: (planKey, choice) => set(state => ({
+        planPerformedChoices: { ...state.planPerformedChoices, [planKey]: choice },
+      })),
       setWellness: (wellness) => set({ wellness }),
       setWellnessCalibrationHours: (wellnessCalibrationHours) => set({ wellnessCalibrationHours }),
-      _hasHydrated: state => set({ _hasHydrated: state }),
+      setHasHydrated: (_hasHydrated) => set({ _hasHydrated }),
       updatePlanConfig: (updates: Partial<PlanConfig>) => set(state => ({
         planConfig: state.planConfig ? { ...state.planConfig, ...updates } : updates as PlanConfig
       })),

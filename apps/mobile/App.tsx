@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   RefreshControl, Alert, ActivityIndicator,
@@ -18,6 +18,7 @@ import { LoadDashboard } from './src/components/ui/LoadDashboard';
 import { WorkoutCard } from './src/components/ui/WorkoutCard';
 import { ActionSheet } from './src/components/ui/BottomSheet';
 import { tokens } from './src/tokens';
+import { generateSmartPlan, adaptPlanAfterNewWorkout } from './src/lib/dailyPlanner';
 import AddWorkoutScreen from './src/screens/AddWorkoutScreen';
 import LoadEngineScreen from './src/screens/LoadEngineScreen';
 import TrainingEngineScreen from './src/screens/TrainingEngineScreen';
@@ -73,6 +74,7 @@ function HomeScreen({ navigation }: any) {
   const {
     deviceId, deviceSecret, isLoading: regLoading, target, _hasHydrated,
     planConfig, updatePlanConfig, wellness, wellnessCalibrationHours,
+    athleteProfile, planWorkoutLinks = {},
   } = useDeviceStore();
 
   const [workouts, setWorkouts] = useState<any[]>([]);
@@ -164,7 +166,7 @@ function HomeScreen({ navigation }: any) {
   async function fetchLoad() {
     if (!deviceId || !deviceSecret) return;
     try {
-      const data = await api.getLoadToday(deviceId, deviceSecret);
+      const data = await api.getLoadToday(deviceId, deviceSecret, athleteProfile?.runnerLevel || null);
       setLoadData(data);
     } catch (e) { console.error(e); }
   }
@@ -197,6 +199,59 @@ function HomeScreen({ navigation }: any) {
     }
   }
 
+  const isWellnessToday = wellness?.calibratedAt
+    ? new Date(wellness.calibratedAt).toDateString() === new Date().toDateString()
+    : false;
+  const loadReadiness = loadData?.readiness || 0;
+  const effectiveReadiness = isWellnessToday
+    ? Math.max(0, Math.min(100, wellness!.readinessScore + (loadReadiness - 65)))
+    : loadReadiness;
+
+  const homeDailyPlan = useMemo(() => {
+    if (!_hasHydrated || !target) return [];
+    const activities = workouts.map(w => ({
+      date: new Date(w.startedAt),
+      distance: (w.distanceM || 0) / 1000,
+      duration: w.durationSec || 0,
+      hrAvg: w.avgHr || 140,
+      elevationGain: w.elevationGain || 0,
+    }));
+    const athlete = {
+      maxHR: athleteProfile?.maxHR || 190,
+      restHR: athleteProfile?.restHR || 60,
+      weight: athleteProfile?.weight || 75,
+      vdot: athleteProfile?.vdot || planConfig?.vdot,
+      runnerLevel: athleteProfile?.runnerLevel,
+      isMasters: athleteProfile?.ageCategory === 'masters' && athleteProfile?.ageLevelMode === 'age',
+    };
+    const defaults = { freeDays: ['wed', 'sat', 'sun'], weeklyTargetKm: 30, longRunTargetKm: 12, sessionsPerWeek: 3 };
+    const config = planConfig ? { ...defaults, ...planConfig } : defaults;
+    const futurePlannedRaceActivities = plannedWorkouts
+      .filter((r: any) => new Date(r.startedAt) >= new Date())
+      .map((r: any) => ({
+        date: new Date(r.startedAt),
+        distance: (r.distanceM || 0) / 1000,
+        duration: r.targetTimeSec || r.durationSec || 0,
+        hrAvg: r.avgHr || 140,
+        isRace: true,
+        racePriority: r.sessionPurpose || 'c-race',
+        title: r.title,
+      }));
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
+    const completedWorkouts = workouts
+      .filter((w: any) => (w.startedAt || '').split('T')[0] <= todayStr)
+      .sort((a: any, b: any) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+    const readinessScores: Record<string, number> = {
+      [todayStr]: loadData ? effectiveReadiness : 100,
+    };
+    const { dailyPlan: basePlan } = generateSmartPlan(target, activities, athlete, config, readinessScores, {}, futurePlannedRaceActivities);
+    if (completedWorkouts.length > 0) {
+      return adaptPlanAfterNewWorkout(basePlan, completedWorkouts[0], athlete, readinessScores, workouts);
+    }
+    return basePlan;
+  }, [_hasHydrated, target, workouts, plannedWorkouts, athleteProfile, planConfig, effectiveReadiness]);
+
   if (regLoading) {
     return (
       <View style={styles.center}>
@@ -210,24 +265,37 @@ function HomeScreen({ navigation }: any) {
     d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1));
     return d;
   })();
-  const weekWorkouts = workouts.filter(w => new Date(w.startedAt) >= weekStart);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 7);
+  const isRunWorkout = (w: any) => String(w.type || '').toLowerCase() === 'run';
+  const isStravaRun = (w: any) => !w.isManual && String(w.source || '').toLowerCase() === 'strava';
+  const weekWorkouts = workouts.filter(w => {
+    const startedAt = new Date(w.startedAt);
+    return isRunWorkout(w) && isStravaRun(w) && startedAt >= weekStart && startedAt < weekEnd;
+  });
   const weekSessions = weekWorkouts.length;
   const weekKm = weekWorkouts.reduce((s, w) => s + (w.distanceM || 0) / 1000, 0);
-  const weekElevation = weekWorkouts.reduce((s, w) => s + (w.elevationGainM || 0), 0);
+  const weekElevation = weekWorkouts.reduce((s, w) => s + (w.elevationGainM || w.elevationGain || 0), 0);
+  const plannedWeekKm = homeDailyPlan.reduce((sum, day) => {
+    const dayDate = new Date(day.date);
+    return dayDate >= weekStart && dayDate < weekEnd ? sum + (day.targetDistanceKm || 0) : sum;
+  }, 0);
 
   const daysToRace = target ? Math.ceil((new Date(target.targetDate).getTime() - Date.now()) / 86400000) : null;
-
-  const isWellnessToday = wellness?.calibratedAt
-    ? new Date(wellness.calibratedAt).toDateString() === new Date().toDateString()
-    : false;
-  const loadReadiness = loadData?.readiness || 0;
-  const effectiveReadiness = isWellnessToday
-    ? Math.max(0, Math.min(100, wellness!.readinessScore + (loadReadiness - 65)))
-    : loadReadiness;
 
   const currentHour = new Date().getHours();
   const { start: winStart = 6, end: winEnd = 11 } = wellnessCalibrationHours || {};
   const inCalibrationWindow = currentHour >= winStart && currentHour < winEnd;
+  const todayPlanForDashboard = homeDailyPlan.find(day => {
+    const d = new Date(day.date);
+    const today = new Date();
+    return d.getFullYear() === today.getFullYear()
+      && d.getMonth() === today.getMonth()
+      && d.getDate() === today.getDate();
+  });
+  const dashboardUsesCorrection = !!todayPlanForDashboard?.title?.includes('(Adjusted)');
+  const correctionTitle = dashboardUsesCorrection ? todayPlanForDashboard?.title : undefined;
+  const correctionSentence = dashboardUsesCorrection ? todayPlanForDashboard?.description : undefined;
 
   // ActionSheet for upcoming workout
   const upcomingSheetActions = upcomingSheet ? [
@@ -319,8 +387,34 @@ function HomeScreen({ navigation }: any) {
             calibrateEnabled={inCalibrationWindow}
             isWellnessActive={isWellnessToday}
             calibratedAt={isWellnessToday ? wellness!.calibratedAt : undefined}
+            statusTitleOverride={correctionTitle}
+            statusSentenceOverride={correctionSentence}
           />
         )}
+
+        {/* ── Weekly run summary ── */}
+        <View style={styles.weekStatsPanel}>
+          <View style={styles.weekStatsHeader}>
+            <Text style={styles.weekStatsTitle}>This week</Text>
+            <Text style={styles.weekStatsSub}>{weekSessions} exported runs</Text>
+          </View>
+          <View style={styles.weekStatsGrid}>
+            <View style={styles.weekStatItem}>
+              <Text style={styles.weekStatValue}>{weekKm.toFixed(1)}</Text>
+              <Text style={styles.weekStatLabel}>run km</Text>
+            </View>
+            <View style={styles.weekStatDivider} />
+            <View style={styles.weekStatItem}>
+              <Text style={styles.weekStatValue}>{plannedWeekKm.toFixed(1)}</Text>
+              <Text style={styles.weekStatLabel}>planned km</Text>
+            </View>
+            <View style={styles.weekStatDivider} />
+            <View style={styles.weekStatItem}>
+              <Text style={styles.weekStatValue}>{Math.round(weekElevation)}</Text>
+              <Text style={styles.weekStatLabel}>vertical m</Text>
+            </View>
+          </View>
+        </View>
 
         {/* ── Race card ── */}
         {_hasHydrated && (
@@ -392,68 +486,87 @@ function HomeScreen({ navigation }: any) {
         {/* ── Week summary strip ── */}
         {_hasHydrated && (() => {
           const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
-          const now = Date.now();
           const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
-          // Explicit visible colours per race type — avoid hex+alpha tricks
-          const PLAN_BG: Record<string, string> = {
-            'b-race': tokens.color.primaryMuted,
-            'c-race': tokens.color.accentMuted,
-            'd-race': '#1a2e0a',
-            default:  tokens.color.primaryMuted,
-          };
-          const PLAN_BORDER: Record<string, string> = {
-            'b-race': tokens.color.primary,
-            'c-race': tokens.color.accent,
-            'd-race': '#84cc16',
-            default:  tokens.color.primary,
-          };
-
-          // Compare by local year/month/day — avoids UTC-offset drift
           const sameDay = (a: Date, b: Date) =>
             a.getFullYear() === b.getFullYear() &&
             a.getMonth()    === b.getMonth()    &&
             a.getDate()     === b.getDate();
 
-          const weekDaySquares = Array.from({ length: 7 }, (_, i) => {
+          const dateKey = (d: Date) =>
+            `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+          type WeekDayStatus = {
+            label: string;
+            status: 'completed' | 'planned' | 'missed' | 'none';
+            isToday: boolean;
+            distKm: number | null;
+          };
+
+          const plannedDaysThisWeek = Array.from({ length: 7 }, (_, i): WeekDayStatus => {
             const dayDate = new Date(weekStart);
             dayDate.setDate(weekStart.getDate() + i);
+            const planEntry = homeDailyPlan.find(p => sameDay(new Date(p.date), dayDate));
+            const plannedOnDay = plannedWorkouts.find((w: any) => sameDay(new Date(w.startedAt), dayDate));
+            const hasTraining = (planEntry?.targetDistanceKm ?? 0) > 0 || !!plannedOnDay;
+
             const isToday = sameDay(dayDate, todayMidnight);
-            const hasCompleted = workouts.some(w => {
-              const d = new Date(w.startedAt);
-              return sameDay(d, dayDate) && d.getTime() <= now;
-            });
-            const planned = plannedWorkouts.find(w => sameDay(new Date(w.startedAt), dayDate)) || null;
-            return { label: DAY_LABELS[i], hasCompleted, planned, isToday };
+            if (!hasTraining) {
+              return { label: DAY_LABELS[i], status: 'none', isToday, distKm: null };
+            }
+
+            const planKey = planEntry
+              ? `${target?.id || 'target'}:${dateKey(new Date(planEntry.date))}:${planEntry.dayNum}`
+              : null;
+            const isLinked = !!(
+              plannedOnDay?.workout ||
+              plannedOnDay?.linkedWorkoutId ||
+              (planKey && planWorkoutLinks[planKey])
+            );
+            const nextTrainingDay = homeDailyPlan
+              .filter(p => (p.targetDistanceKm ?? 0) > 0 && dateKey(new Date(p.date)) > dateKey(dayDate))
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+            const missedCutoff = nextTrainingDay ? new Date(nextTrainingDay.date) : null;
+            missedCutoff?.setHours(0, 0, 0, 0);
+
+            let status: Exclude<WeekDayStatus['status'], 'none'>;
+            if (isLinked) {
+              status = 'completed';
+            } else if (missedCutoff && todayMidnight >= missedCutoff) {
+              status = 'missed';
+            } else {
+              status = 'planned';
+            }
+
+            const distKm = !isLinked
+              ? (planEntry?.targetDistanceKm ?? (plannedOnDay?.distanceM ? plannedOnDay.distanceM / 1000 : null))
+              : null;
+            return { label: DAY_LABELS[i], status, isToday, distKm };
           });
 
           return (
             <View style={styles.weekStrip}>
-              {weekDaySquares.map((day, i) => {
-                const purpose     = day.planned?.sessionPurpose || 'default';
-                const planBg      = PLAN_BG[purpose]     || PLAN_BG.default;
-                const planBorder  = PLAN_BORDER[purpose] || PLAN_BORDER.default;
-                const showPlan    = !day.hasCompleted && !!day.planned;
-                const distLabel   = showPlan && day.planned?.distanceM
-                  ? `${(day.planned.distanceM / 1000).toFixed(0)}k`
-                  : null;
+              {plannedDaysThisWeek.map((day, i) => {
+                const squareStyle =
+                  day.status === 'completed' ? styles.weekDaySquareFilled :
+                  day.status === 'planned'   ? { backgroundColor: '#2a1f00', borderColor: tokens.color.warning, borderWidth: 1.5 } :
+                  day.status === 'missed'    ? { backgroundColor: tokens.color.dangerMuted, borderColor: tokens.color.danger, borderWidth: 1.5 } :
+                  day.isToday                ? styles.weekDaySquareToday :
+                  undefined;
+
+                const labelColor =
+                  day.status === 'completed' ? tokens.color.success :
+                  day.status === 'planned'   ? tokens.color.warning :
+                  day.status === 'missed'    ? tokens.color.danger :
+                  day.isToday                ? tokens.color.primary :
+                  undefined;
 
                 return (
                   <View key={i} style={styles.weekDay}>
-                    <View style={[
-                      styles.weekDaySquare,
-                      day.hasCompleted && styles.weekDaySquareFilled,
-                      showPlan && { backgroundColor: planBg, borderColor: planBorder, borderWidth: 1.5 },
-                      day.isToday && !day.hasCompleted && !showPlan && styles.weekDaySquareToday,
-                    ]} />
-                    <Text style={[
-                      styles.weekDayLabel,
-                      day.isToday && !showPlan && styles.weekDayLabelToday,
-                      showPlan && { color: planBorder },
-                      day.hasCompleted && { color: tokens.color.success },
-                    ]}>{day.label}</Text>
-                    {distLabel ? (
-                      <Text style={[styles.weekDayPlan, { color: planBorder }]}>{distLabel}</Text>
+                    <View style={[styles.weekDaySquare, squareStyle]} />
+                    <Text style={[styles.weekDayLabel, labelColor ? { color: labelColor } : undefined]}>{day.label}</Text>
+                    {day.distKm ? (
+                      <Text style={[styles.weekDayPlan, { color: labelColor }]}>{`${day.distKm.toFixed(0)}k`}</Text>
                     ) : null}
                   </View>
                 );
@@ -484,6 +597,7 @@ function HomeScreen({ navigation }: any) {
                 <WorkoutCard
                   key={w.id}
                   workout={w}
+                  runnerLevel={athleteProfile?.runnerLevel || null}
                   onDelete={(id) => setDeleteSheet(id)}
                 />
               ))}
@@ -691,6 +805,60 @@ const styles = StyleSheet.create({
     color: tokens.color.textMuted,
     fontWeight: '500',
     flex: 1,
+  },
+
+  /* Weekly run summary */
+  weekStatsPanel: {
+    backgroundColor: tokens.color.surface,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.color.border,
+    marginBottom: tokens.space.sm,
+    padding: tokens.space.md,
+  },
+  weekStatsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: tokens.space.sm,
+  },
+  weekStatsTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: tokens.color.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  weekStatsSub: {
+    fontSize: tokens.font.xs,
+    color: tokens.color.textMuted,
+    fontWeight: '600',
+  },
+  weekStatsGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  weekStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  weekStatValue: {
+    fontSize: tokens.font.xl,
+    fontWeight: '800',
+    color: tokens.color.textPrimary,
+  },
+  weekStatLabel: {
+    fontSize: 10,
+    color: tokens.color.textMuted,
+    fontWeight: '700',
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  weekStatDivider: {
+    width: 1,
+    height: 34,
+    backgroundColor: tokens.color.border,
   },
 
   /* Week strip */

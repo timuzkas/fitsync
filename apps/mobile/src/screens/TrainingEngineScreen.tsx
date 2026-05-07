@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Animated, Alert, TextInput
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, TextInput
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { useNavigation } from '@react-navigation/native';
@@ -20,20 +20,11 @@ function calculateVdotFrom5k(minutes: number, seconds: number): number {
 }
 
 interface EngineConfig {
-  halfLifeHours: { cardio: number; legs: number; upper: number; core: number };
-  multipliers: { cardio: number; legs: number; upper: number; core: number };
-  weeklyTarget: number;
-  readinessFormula: 'simple' | 'exponential';
-  acwrThreshold: number;
   vdot?: number;
 }
 
 const DEFAULT_CONFIG: EngineConfig = {
-  halfLifeHours: { cardio: 84, legs: 96, upper: 84, core: 60 },
-  multipliers: { cardio: 1.2, legs: 1.5, upper: 1.0, core: 0.8 },
-  weeklyTarget: 400,
-  readinessFormula: 'simple',
-  acwrThreshold: 1.5,
+  vdot: 40,
 };
 
 const RUNNER_LEVEL_LABELS: Record<string, string> = {
@@ -55,8 +46,8 @@ export default function TrainingEngineScreen() {
   const navigation = useNavigation();
   const { deviceId, deviceSecret, athleteProfile } = useDeviceStore();
   const [config, setConfig] = useState<EngineConfig>(DEFAULT_CONFIG);
+  const [serverConfig, setServerConfig] = useState<any>({});
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [fivekMin, setFivekMin] = useState('25');
   const [fivekSec, setFivekSec] = useState('00');
 
@@ -64,17 +55,17 @@ export default function TrainingEngineScreen() {
     if (deviceId && deviceSecret) {
       api.getLoadConfig(deviceId, deviceSecret)
         .then(c => {
-          setConfig({ ...DEFAULT_CONFIG, ...c });
-          setLoading(false);
+          setServerConfig(c || {});
+          setConfig({ ...DEFAULT_CONFIG, vdot: c?.vdot ?? DEFAULT_CONFIG.vdot });
         })
-        .catch(() => setLoading(false));
+        .catch(() => {});
     }
   }, [deviceId, deviceSecret]);
 
   async function handleSave() {
     if (!deviceId || !deviceSecret) return;
     try {
-      await api.updateLoadConfig(deviceId, deviceSecret, config);
+      await api.updateLoadConfig(deviceId, deviceSecret, { ...serverConfig, ...config });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -133,7 +124,7 @@ export default function TrainingEngineScreen() {
                     placeholder="25"
                     placeholderTextColor={tokens.color.textMuted}
                     maxLength={2}
-                    onChangeText={text => setFivekMin(text || '25')}
+                    onChangeText={(text: string) => setFivekMin(text || '25')}
                   />
                   <Text style={{ color: tokens.color.textMuted, fontSize: tokens.font.lg }}>:</Text>
                   <TextInput
@@ -142,7 +133,7 @@ export default function TrainingEngineScreen() {
                     placeholder="00"
                     placeholderTextColor={tokens.color.textMuted}
                     maxLength={2}
-                    onChangeText={text => setFivekSec(text || '00')}
+                    onChangeText={(text: string) => setFivekSec(text || '00')}
                   />
                   <Text style={{ color: tokens.color.textMuted, fontSize: tokens.font.sm, marginLeft: 4 }}>min</Text>
                 </View>
@@ -243,86 +234,8 @@ export default function TrainingEngineScreen() {
             })()}
           </View>
         </View>
-
-        {/* --- FOSTER LOAD DECAY --- */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Load Persistence</Text>
-          <View style={styles.glassCard}>
-            <Text style={styles.cardDesc}>
-              How many days it takes for a session's physiological stress to decay to 50%.
-            </Text>
-            
-            <EngineSlider 
-              label="Cardio" 
-              value={config.halfLifeHours.cardio} 
-              format={v => `${(v/24).toFixed(1)}d`}
-              min={24} max={168}
-              onChange={v => setConfig(p => ({ ...p, halfLifeHours: { ...p.halfLifeHours, cardio: v } }))}
-            />
-            <EngineSlider 
-              label="Muscular (Legs)" 
-              value={config.halfLifeHours.legs} 
-              format={v => `${(v/24).toFixed(1)}d`}
-              min={24} max={168}
-              onChange={v => setConfig(p => ({ ...p, halfLifeHours: { ...p.halfLifeHours, legs: v } }))}
-            />
-          </View>
-        </View>
-
-        {/* --- INJURY GUARD --- */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Injury Guard (ACWR)</Text>
-          <View style={styles.glassCard}>
-            <View style={styles.row}>
-              <Text style={styles.cardLabel}>Risk Threshold</Text>
-              <Text style={styles.cardValue}>{config.acwrThreshold.toFixed(2)}</Text>
-            </View>
-            <Text style={styles.cardDesc}>
-              If your Acute:Chronic Workload Ratio exceeds this, the plan will automatically trim easy volume.
-            </Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={1.0}
-              maximumValue={2.0}
-              step={0.05}
-              value={config.acwrThreshold}
-              onValueChange={v => updateConfig({ acwrThreshold: v })}
-              minimumTrackTintColor={tokens.color.accent}
-              maximumTrackTintColor={tokens.color.border}
-              thumbTintColor={tokens.color.accent}
-            />
-            <View style={styles.scale}>
-              <Text style={styles.scaleText}>Safe</Text>
-              <Text style={styles.scaleText}>Aggressive</Text>
-              <Text style={styles.scaleText}>Danger</Text>
-            </View>
-          </View>
-        </View>
-
         <View style={{ height: 100 }} />
       </ScrollView>
-    </View>
-  );
-}
-
-function EngineSlider({ label, value, format, min, max, onChange }: any) {
-  return (
-    <View style={styles.engineSliderRow}>
-      <View style={styles.row}>
-        <Text style={styles.engineSliderLabel}>{label}</Text>
-        <Text style={styles.engineSliderValue}>{format(value)}</Text>
-      </View>
-      <Slider
-        style={styles.slider}
-        minimumValue={min}
-        maximumValue={max}
-        step={1}
-        value={value}
-        onValueChange={onChange}
-        minimumTrackTintColor={tokens.color.primary}
-        maximumTrackTintColor={tokens.color.border}
-        thumbTintColor={tokens.color.primary}
-      />
     </View>
   );
 }
@@ -421,66 +334,5 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 40,
     marginHorizontal: -10,
-  },
-  engineSliderRow: {
-    marginTop: tokens.space.md,
-  },
-  engineSliderLabel: {
-    fontSize: tokens.font.sm,
-    color: tokens.color.textPrimary,
-    fontWeight: '500',
-  },
-  engineSliderValue: {
-    fontSize: tokens.font.sm,
-    color: tokens.color.primary,
-    fontWeight: '700',
-  },
-  scale: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: -8,
-  },
-  scaleText: {
-    fontSize: 10,
-    color: tokens.color.textTertiary,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  baselineGrid: {
-    flexDirection: 'column',
-    gap: tokens.space.sm,
-  },
-  baselineCard: {
-    backgroundColor: tokens.color.surface,
-    borderRadius: tokens.radius.md,
-    padding: tokens.space.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: tokens.color.border,
-  },
-  baselineCardActive: {
-    borderColor: tokens.color.primary,
-    backgroundColor: 'rgba(10, 132, 255, 0.1)',
-  },
-  baselineLabel: {
-    fontSize: tokens.font.sm,
-    fontWeight: '600',
-    color: tokens.color.textSecondary,
-    marginBottom: 4,
-  },
-  baselineLabelActive: {
-    color: tokens.color.primary,
-  },
-  baselineVdot: {
-    fontSize: tokens.font.md,
-    fontWeight: '700',
-    color: tokens.color.textPrimary,
-  },
-  baselineDesc: {
-    fontSize: 10,
-    color: tokens.color.textMuted,
-    marginTop: 2,
   },
 });
